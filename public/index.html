@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Screens · Verdictan</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to comparison</a>
+    <header>
+      <a class="brand" href="/" aria-label="Screens home"
+        ><span class="logo">▣</span> screens<span class="badge">LOCAL</span></a
+      ><span class="divider"></span
+      ><label>Project<select id="project" aria-label="Project"></select></label
+      ><label class="run-label"
+        >Review run<select id="run" aria-label="Review run"></select></label
+      ><span class="saved" id="connection">Connecting…</span>
+    </header>
+    <div class="workspace">
+      <aside class="sidebar">
+        <div class="sidebar-heading">
+          <strong>Screen library</strong><span id="count" class="muted"></span>
+        </div>
+        <input
+          id="search"
+          type="search"
+          placeholder="Find a screen…"
+          aria-label="Find a screen"
+        /><label class="filter-label"
+          >Show<select id="filter" aria-label="Screen filter">
+            <option value="all">All screens</option>
+            <option value="open">With open feedback</option>
+            <option value="missing">Missing a comparison side</option>
+          </select></label
+        >
+        <nav id="screens" aria-label="Screens"></nav>
+        <div class="sidebar-footer">
+          <span class="dot"></span> Shared with your agents<br /><small
+            >Versioned evidence. One review history.</small
+          >
+        </div>
+      </aside>
+      <main id="main" tabindex="-1">
+        <div id="empty" class="empty">
+          <span class="eyebrow">YOUR SCREEN WORKSPACE</span>
+          <h1>Every screen.<br />A clear point of comparison.</h1>
+          <p>
+            Load a project to bring designs, implementation captures, and
+            feedback into one place.
+          </p>
+          <code>screens load ./project --project my-project</code>
+          <p class="muted">
+            Supports screens.json, Kalkidan picks and Verdictan capture
+            manifests.
+          </p>
+        </div>
+        <div id="review" hidden>
+          <div class="page-heading">
+            <div>
+              <span class="eyebrow" id="screen-key"></span>
+              <h1 id="title"></h1>
+              <p id="variant" class="muted"></p>
+            </div>
+            <div class="pager">
+              <button id="previous" aria-label="Previous screen">←</button
+              ><button id="next" aria-label="Next screen">→</button>
+            </div>
+          </div>
+          <div id="warnings" class="warnings" hidden></div>
+          <div class="toolbar">
+            <div class="segmented" role="group" aria-label="Comparison">
+              <button data-pair="current,pr" aria-pressed="false">
+                Current / PR</button
+              ><button data-pair="target,pr" aria-pressed="false">
+                Target / PR</button
+              ><button data-pair="current,target" aria-pressed="true">
+                Current / Target
+              </button>
+            </div>
+            <div class="display-tools">
+              <label
+                >View<select id="view">
+                  <option value="side">Side by side</option>
+                  <option value="overlay">Overlay</option>
+                </select></label
+              ><label id="opacity-label" hidden
+                >Blend<input
+                  id="opacity"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="50"
+              /></label>
+            </div>
+          </div>
+          <div id="comparison" class="comparison"></div>
+          <div class="under-comparison">
+            <p id="comparison-status" class="muted"></p>
+            <button id="approve" hidden>Approve this target</button>
+          </div>
+          <section class="feedback">
+            <div class="section-heading">
+              <h2>Feedback</h2>
+              <span class="muted">Pinned to the exact capture</span>
+            </div>
+            <p class="muted">
+              Click a capture to place a pin, or add a screen note below.
+              Earlier notes keep their original image.
+            </p>
+            <form id="note-form">
+              <div class="note-fields">
+                <label
+                  >Capture<select id="note-capture" required></select></label
+                ><label
+                  >Your name<input
+                    id="author"
+                    value="Reviewer"
+                    required
+                    maxlength="100" /></label
+                ><span id="pin-label" class="muted">No pin selected</span
+                ><button id="clear-pin" type="button">Clear pin</button>
+              </div>
+              <label class="sr-only" for="note-text">Feedback</label
+              ><textarea
+                id="note-text"
+                placeholder="What should change, and why?"
+                required
+                maxlength="10000"
+              ></textarea>
+              <div class="form-footer">
+                <span class="muted"
+                  >Visible to people and agents working on this screen.</span
+                ><button class="primary" type="submit">Add feedback</button>
+              </div>
+            </form>
+            <div id="notes"></div>
+          </section>
+          <details class="provenance">
+            <summary>Evidence and capture history</summary>
+            <div id="history"></div>
+          </details>
+        </div>
+      </main>
+    </div>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

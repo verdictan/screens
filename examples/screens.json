@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "example",
+    "name": "Example",
+    "repository": "verdictan/example"
+  },
+  "screens": [
+    {
+      "key": "work-item/awaiting-review",
+      "title": "Work item awaiting review",
+      "state": "awaiting-review",
+      "group": "Work items",
+      "route": "/work/example",
+      "source": "src/work-item.tsx",
+      "recipe": "Use the sample work-item fixture and open the awaiting-review state.",
+      "captures": [
+        {
+          "role": "current",
+          "file": "assets/current.png",
+          "revision": "REPLACE_WITH_BASE_SHA",
+          "fixture": "work-item-v1",
+          "provenance": "Replace with capture runner and build details",
+          "variant": {
+            "device": "desktop",
+            "theme": "light",
+            "viewport": "1440x900",
+            "locale": "en",
+            "textScale": "default"
+          }
+        },
+        {
+          "role": "target",
+          "file": "assets/target.png",
+          "revision": "design-v1",
+          "fixture": "work-item-v1",
+          "provenance": "Proposed design; approve in review UI",
+          "variant": {
+            "device": "desktop",
+            "theme": "light",
+            "viewport": "1440x900",
+            "locale": "en",
+            "textScale": "default"
+          }
+        },
+        {
+          "role": "pr",
+          "file": "assets/pr.png",
+          "revision": "REPLACE_WITH_HEAD_SHA",
+          "fixture": "work-item-v1",
+          "provenance": "Replace with capture runner and build details",
+          "variant": {
+            "device": "desktop",
+            "theme": "light",
+            "viewport": "1440x900",
+            "locale": "en",
+            "textScale": "default"
+          }
+        }
+      ]
+    }
+  ]
+}

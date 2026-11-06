@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Ship the local registry and review foundation",
+    "status": "In Progress",
+    "body": "Implement SQLite storage, immutable captures/runs, imports, comparison picker, feedback and agent access.\n\nImplemented locally: registry, four import adapters, Current/Target/PR views, overlays, capture-bound notes, revision checks, direct stdio and HTTP MCP, CLI and skill source.\n\nAcceptance still required:\n- [ ] Run live HTTP/bridge integration on a loopback-enabled host.\n- [ ] Verify picker interactions and responsive layout in a browser.\n- [ ] Connect real Claude Code and Codex clients.\n- [ ] Review and merge the initial implementation."
+  },
+  {
+    "title": "Capture exact PR revisions with project adapters",
+    "status": "Todo",
+    "body": "Resolve PR head and merge base, prepare isolated builds and run approved capture recipes. Support browser, Electron native windows and iOS Simulator. Pin source, fixtures and environment. Do not execute repository commands during manifest import. Detect stale PR heads and preserve all evidence."
+  },
+  {
+    "title": "Add versioned project configuration and coverage",
+    "status": "Todo",
+    "body": "Define a validated screens configuration schema, stable screen/state mappings, source dependencies and reproducible recipes. Show missing states independently of successful captures. Support metadata updates and screen rename lineage."
+  },
+  {
+    "title": "Package and validate Screens skills for Claude and Codex",
+    "status": "Todo",
+    "body": "Distribute the shared workflow with client-specific installation instructions and MCP setup. Forward-test load, compare and fix on real repositories. Preserve explicit evidence limitations and missing-capture reporting. Source skill exists in skills/screens; global installation is not yet performed."
+  },
+  {
+    "title": "Coordinate agents with expiring claims",
+    "status": "Todo",
+    "body": "Add transactional issue claims, owner identity, expiry, renewal and conflict responses. Keep feedback updates revision-checked. Add bounded tool responses and pagination for large screen libraries."
+  },
+  {
+    "title": "Migrate review history and export portable reviews",
+    "status": "Todo",
+    "body": "Import existing Kalkidan and Verdictan review notes without moving pins onto new images. Preserve unknown or missing historical captures explicitly. Add portable JSON export/import and deterministic versioned review bundles."
+  },
+  {
+    "title": "Add visual differences and semantic verification evidence",
+    "status": "Todo",
+    "body": "Generate lossless diff artifacts with equal-size alignment and explicit masks. Distinguish pixel differences from acceptance. Attach behavioral checks, motion evidence and accessibility review without claiming screenshots prove runtime behavior."
+  },
+  {
+    "title": "Add authenticated shared hosting and job dispatch",
+    "status": "Todo",
+    "body": "Add authenticated people and agent identities, project-scoped authorization, reviewer-only approval enforcement, object storage, upload controls, retention and background capture jobs. Keep local v0.1 loopback-only until this boundary is implemented."
+  }
+]
