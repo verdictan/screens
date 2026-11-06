@@ -3,7 +3,7 @@
 Build a local-first registry that keeps design targets, implementation evidence,
 and human decisions distinct. Read README.md and docs/architecture.md first.
 
-- Use Node's built-in APIs. No production dependencies are required for v0.1.
+- Prefer Node's built-in APIs. Sharp is the pinned raster decoding/diff dependency.
 - Run tests and validation only when explicitly requested, required by higher-priority instructions, or required by configured commit hooks.
 - Captures and comparison runs are immutable. Never overwrite evidence.
 - Bind notes and approvals to capture IDs, never mutable file paths.

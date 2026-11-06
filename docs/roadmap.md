@@ -4,7 +4,8 @@
 
 Implemented: SQLite persistence, immutable image and run IDs, four manifest
 adapters, Current/Target/PR picker, comparison overlay, feedback, approval
-history, CLI, direct stdio MCP and HTTP MCP, distributable skill source.
+history, CLI, direct stdio MCP and HTTP MCP, client skill installer/packages,
+Docker Compose, pixel diffs/masks and capture-linked semantic evidence.
 
 Remaining release checks: live HTTP integration on an unrestricted loopback host,
 browser functional and responsive verification, real Claude/Codex client sessions.
@@ -23,10 +24,10 @@ browser functional and responsive verification, real Claude/Codex client session
 - Expiring issue claims and collision handling.
 - Screen metadata revision updates and rename/move lineage.
 - Pagination and scoped retrieval for large screen libraries.
-- Missing-state coverage independent of successful captures.
+- Broader route/state coverage discovery (registered screens with no captures are already reported).
 - Carry-forward feedback with explicit reconfirmation on changed screenshots.
 - Legacy note migration and exported review JSON.
-- Optional image diff artifacts and masks; retain semantic/manual review.
+- Additional perceptual metrics and richer motion playback, preserving manual acceptance.
 
 ## Milestone 4 — shared hosting
 
@@ -34,4 +35,4 @@ browser functional and responsive verification, real Claude/Codex client session
 - Enforced reviewer-only approvals and signed capture provenance.
 - Remote asset uploads, object storage and retention policy.
 - Background job dispatch, audit views and CI integration.
-- Packaging and installation for Claude Code and Codex.
+- Signed releases and registry distribution for client packages.

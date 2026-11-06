@@ -1,4 +1,5 @@
 import { requireThat } from "./validation.mjs";
+import { createDiff } from "./diff.mjs";
 const string = { type: "string" };
 const object = (properties, required = []) => ({
   type: "object",
@@ -12,6 +13,90 @@ const json = (value) => ({
 
 export function mcpTools(store) {
   const tools = [
+    [
+      "diffs_create",
+      "Measure pixel changes between exact captures. Masks are integer pixel rectangles; scores do not decide acceptance.",
+      object(
+        {
+          left: string,
+          right: string,
+          threshold: { type: "integer", minimum: 0, maximum: 255 },
+          masks: {
+            type: "array",
+            items: object(
+              {
+                x: { type: "integer" },
+                y: { type: "integer" },
+                width: { type: "integer" },
+                height: { type: "integer" },
+              },
+              ["x", "y", "width", "height"],
+            ),
+          },
+        },
+        ["left", "right"],
+      ),
+      (a) => createDiff(store, a),
+    ],
+    [
+      "diffs_view",
+      "Read persisted diff measurements and the lossless artifact, when available.",
+      object({ id: string }, ["id"]),
+      (a) => {
+        const value = store.getDiff(a.id),
+          content = [{ type: "text", text: JSON.stringify(value) }];
+        if (value.image) {
+          const bytes = store.diffImage(a.id);
+          requireThat(
+            bytes.length <= 10 * 1024 * 1024,
+            "Diff exceeds MCP limit; view in picker",
+          );
+          content.push({
+            type: "image",
+            mimeType: "image/png",
+            data: bytes.toString("base64"),
+          });
+        }
+        return { content };
+      },
+    ],
+    [
+      "evidence_add",
+      "Attach a reporter-supplied check to an exact capture; does not approve or verify a fix. Automated pass/fail requires a report artifact.",
+      object(
+        {
+          capture: string,
+          kind: { enum: ["visual", "behavior", "accessibility", "motion"] },
+          method: { enum: ["manual", "automated", "screenshot"] },
+          outcome: { enum: ["pass", "fail", "not-run"] },
+          assertion: string,
+          observation: string,
+          procedure: string,
+          author: string,
+          artifactBase64: string,
+          artifactType: {
+            enum: ["text/plain", "application/json", "video/mp4", "video/webm"],
+          },
+        },
+        [
+          "capture",
+          "kind",
+          "method",
+          "outcome",
+          "assertion",
+          "observation",
+          "procedure",
+          "author",
+        ],
+      ),
+      (a) => store.addEvidence(a),
+    ],
+    [
+      "evidence_list",
+      "List immutable reported checks for a capture or screen. Read artifact URLs in the local picker; these are reported results, not acceptance decisions.",
+      object({ capture: string, screen: string }),
+      (a) => store.listEvidence(a),
+    ],
     [
       "projects_list",
       "List registered projects.",
@@ -179,7 +264,7 @@ export function protocol(store) {
         result: {
           protocolVersion: "2025-03-26",
           capabilities: { tools: {} },
-          serverInfo: { name: "verdictan-screens", version: "0.1.0" },
+          serverInfo: { name: "verdictan-screens", version: "0.2.0" },
           instructions:
             "Use screens_search, then screens_get and captures_view. Submit evidence; human review decides acceptance. Imported targets are not automatically approved.",
         },

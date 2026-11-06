@@ -1,0 +1,24 @@
+name: screens
+services:
+  screens:
+    build: .
+    image: verdictan/screens:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SCREENS_PORT:-4800}:${SCREENS_PORT:-4800}"
+    environment:
+      PORT: ${SCREENS_PORT:-4800}
+      SCREENS_HOST: 0.0.0.0
+      SCREENS_HOME: /data
+    volumes:
+      - screens-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+volumes:
+  screens-data:

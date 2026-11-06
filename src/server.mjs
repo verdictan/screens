@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { protocol } from "./mcp.mjs";
 import { Fault, requireThat } from "./validation.mjs";
+import { createDiff } from "./diff.mjs";
 
 async function body(req) {
   let length = 0;
@@ -102,7 +103,7 @@ export function requestHandler(store, getPort) {
           );
         }
         if (path === "/api/health")
-          return send(200, { ok: true, version: "0.1.0" });
+          return send(200, { ok: true, version: "0.2.0" });
         if (path === "/api/projects") return send(200, store.projects());
         if (path === "/api/screens")
           return send(
@@ -118,6 +119,30 @@ export function requestHandler(store, getPort) {
           return send(200, store.runs(url.searchParams.get("project")));
         if (path === "/api/compare")
           return send(200, store.compare(url.searchParams.get("run")));
+        if (path === "/api/evidence")
+          return send(
+            200,
+            store.listEvidence({
+              capture: url.searchParams.get("capture"),
+              screen: url.searchParams.get("screen"),
+            }),
+          );
+        const diff = path.match(/^\/api\/diffs\/([a-f0-9]{64})(\/image)?$/);
+        if (diff)
+          return diff[2]
+            ? send(200, store.diffImage(diff[1]), "image/png")
+            : send(200, store.getDiff(diff[1]));
+        const artifact = path.match(
+          /^\/api\/evidence\/([a-f0-9-]{36})\/artifact$/,
+        );
+        if (artifact) {
+          const result = store.evidenceArtifact(artifact[1]);
+          res.setHeader(
+            "Content-Disposition",
+            'attachment; filename="evidence"',
+          );
+          return send(200, result.bytes, result.artifact.mimeType);
+        }
         const match = path.match(/^\/api\/captures\/([a-f0-9]{64})\/image$/);
         if (match) {
           const { capture, bytes } = store.image(match[1]);
@@ -131,6 +156,10 @@ export function requestHandler(store, getPort) {
           415,
         );
         const input = await body(req);
+        if (path === "/api/diffs")
+          return send(201, await createDiff(store, input));
+        if (path === "/api/evidence")
+          return send(201, store.addEvidence(input));
         if (path === "/api/notes") return send(201, store.addNote(input));
         if (path === "/api/notes/update")
           return send(200, store.updateNote(input, { human: true }));

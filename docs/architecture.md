@@ -34,8 +34,9 @@ erase past events or images.
 
 Align on stable screen identity and exact variant fields. Never match by fuzzy
 title alone. Missing sides remain missing. Identical file hashes mean identical
-bytes; different file hashes do not prove a visual difference. The picker does
-not compute pixel scores. Overlay requires identical decoded dimensions and does
+bytes; different file hashes do not prove a visual difference. Pixel comparisons decode through Sharp to oriented sRGB RGBA and compare the
+maximum absolute channel difference against a recorded integer tolerance.
+Lossless PNG artifacts mark changes and explicit excluded regions. Overlay requires identical decoded dimensions and does
 not resize mismatched screenshots to manufacture alignment.
 
 ## Feedback semantics
@@ -48,7 +49,7 @@ returns HTTP 409 rather than overwriting another edit.
 
 ## MCP
 
-v0.1 targets protocol 2025-03-26, with initialize, ping, tools/list and tools/call.
+v0.2 targets protocol 2025-03-26, with initialize, ping, tools/list and tools/call.
 It supports newline-delimited stdio and stateless JSON responses over Streamable
 HTTP. GET /mcp returns 405; server-initiated SSE is not implemented. No tool exposes
 arbitrary filesystem reads or shell execution. The explicit local CLI handles
@@ -57,7 +58,7 @@ MCP image content blocks rather than filenames.
 
 ## Trust boundary
 
-v0.1 is single-user and local. Host/Origin checks protect against cross-origin
+v0.2 is single-user and local. Host/Origin checks protect against cross-origin
 browser requests. They are not multi-user authentication. Local scripts can reach
 the human review API, so omitted MCP approval tools are a workflow convention,
 not a security claim. Hosted operation needs authenticated actors, authorization,
@@ -70,3 +71,24 @@ base and merge-base identifiers. Capture adapters are the next milestone. Native
 applications must use native capture. Web screenshots must use fixture-controlled
 browser sessions. Existing evidence can be imported without being falsely
 presented as freshly verified runtime evidence.
+
+## Evidence storage (schema v2)
+
+`diffs` records immutable left/right capture IDs, original byte hashes, algorithm
+and decoder versions, tolerance, masks, dimensions, fixture status and measured
+counts. Size mismatches produce a stored not-measured result with no image. The
+same inputs reuse the same record. Images are capped at 16 million decoded pixels.
+
+`evidence` records immutable capture-bound assertions, procedures, observations,
+reporter identity, method and reported outcomes. Optional text/JSON/video artifacts
+are content-addressed in assets. Neither a pass nor a zero diff promotes targets
+or verifies feedback. Evidence provenance is explicitly reporter-supplied; no
+cryptographic attestation of execution is claimed. Downloads are attachments.
+
+New runs snapshot registered screens with no captures as uncoveredScreens. This
+preserves known coverage gaps without manufacturing evidence or changing old runs.
+Schema v2 adds tables and an evidence index; it retains all v1 rows and assets.
+
+Run comparisons expose `measurements` for all measured pairs of exact captures.
+The older `pixelComparison` byte-level summary is explicitly scoped by
+`pixelComparisonPair` to current/pr; it is not a summary of target comparisons.

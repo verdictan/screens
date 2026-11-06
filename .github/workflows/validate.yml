@@ -1,0 +1,40 @@
+name: Validate Screens
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run check && npm test && npm run test:integration
+      - run: npm run skills:validate && npm run skills:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screens-agent-skills
+          path: dist/
+  deployment:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: screens-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: docker compose config --quiet
+      - run: docker compose up -d --build --wait
+      - run: node scripts/smoke-deployment.mjs write
+      - run: docker compose restart && docker compose up -d --wait
+      - run: node scripts/smoke-deployment.mjs read
+      - if: always()
+        run: docker compose logs && docker compose down
