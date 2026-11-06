@@ -78,3 +78,23 @@ node scripts/smoke-deployment.mjs read
 
 The smoke check writes one clearly named deployment-check project and verifies it
 survives restart. CI runs this workflow in an isolated Compose project.
+
+## SSH deployment
+
+From a clean, committed checkout with SSH access:
+
+```sh
+bash scripts/deploy-ssh.sh dennisotugo@192.168.1.142 4900
+ssh -N -L 4900:127.0.0.1:4900 dennisotugo@192.168.1.142
+```
+
+Open http://localhost:4900. Port 4900 keeps the remote deployment separate from a
+local Screens instance on 4800. The script archives the exact Git commit, writes a
+new release directory, builds with Compose, and checks HTTP/MCP plus persistence
+across restart. The stable `screens` Compose project retains its named volume.
+It never copies local databases or screenshots. Import project evidence explicitly
+after deployment. Keep the SSH tunnel active; no public HTTP port is opened.
+
+The image includes Chromium and Git for explicit browser captures. Configuration
+and source mounts stay read-only; the capture output directory must be writable by
+the container user (UID 1000). Never use the service as a public execution endpoint.

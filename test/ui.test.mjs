@@ -20,9 +20,10 @@ async function until(fn) {
 test("picker navigation, persisted diff, masks, evidence, feedback and approval use the real service layer", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "screens-ui-")),
     store = new Store(dir);
-  const dom = new JSDOM(readFileSync("public/index.html", "utf8"), {
+  const dom = new JSDOM(readFileSync("dist/ui/index.html", "utf8"), {
     url: "http://127.0.0.1:4800",
     runScripts: "outside-only",
+    pretendToBeVisual: true,
   });
   t.after(() => {
     dom.window.close();
@@ -77,9 +78,17 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
       json: async () => JSON.parse(res.body),
     };
   };
-  await new Script(
-    `(async()=>{${readFileSync("public/app.js", "utf8")}\n})()`,
-  ).runInContext(dom.getInternalVMContext());
+  dom.window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+  const bundle = readFileSync("dist/ui/index.html", "utf8").match(
+    /src="(\/assets\/[^"]+\.js)"/,
+  )[1];
+  new Script(readFileSync("dist/ui" + bundle, "utf8")).runInContext(
+    dom.getInternalVMContext(),
+  );
   const $ = (id) => dom.window.document.getElementById(id),
     event = (type) =>
       new dom.window.Event(type, { bubbles: true, cancelable: true });
@@ -91,6 +100,17 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
         submitter: $(id).querySelector('[type="submit"]'),
       }),
     );
+  const tab = async (name) => {
+    const node = [...dom.window.document.querySelectorAll('[role="tab"]')].find(
+      (t) => t.textContent.startsWith(name),
+    );
+    node.dispatchEvent(
+      new dom.window.MouseEvent("mousedown", { bubbles: true, button: 0 }),
+    );
+    node.click();
+    await until(() => node.dataset.state === "active");
+  };
+  await until(() => $("title"));
   assert.equal($("title").textContent, "Home");
   assert.equal($("review").hidden, false);
   $("measure").click();
@@ -98,8 +118,10 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
   $("mask-width").value = "1";
   $("mask-height").value = "1";
   $("add-mask").click();
+  await until(() => $("diff-result").textContent.includes("Not measured"));
   $("measure").click();
   await until(() => $("diff-result").textContent.includes("1 masked"));
+  await tab("Evidence");
   $("evidence-kind").value = "behavior";
   $("evidence-outcome").value = "pass";
   $("evidence-assertion").value = "Escape closes dialog";
@@ -111,22 +133,27 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
   );
   assert.match($("evidence-list").textContent, /Reported pass/);
   assert.match($("evidence-list").textContent, /not been assessed/);
+  await tab("Feedback");
   $("note-capture").value = pr.id;
   $("note-text").value = "Align title";
   submit("note-form");
   await until(() => $("notes").textContent.includes("Align title"));
+  await tab("Compare");
   $("approve").click();
-  await until(() => $("approve").hidden);
+  await until(() => !$("approve"));
   assert.equal(store.getScreen("ui/home").targets[0].capture, target.id);
   $("next").click();
   await until(() => $("title").textContent === "Missing");
   assert.equal($("measure").disabled, true);
-  assert.match($("comparison").textContent, /No pr capture/);
+  assert.match($("comparison").textContent, /No current capture/);
   $("previous").click();
   await until(() => $("title").textContent === "Home");
   assert.match($("diff-result").textContent, /100.000% changed/);
-  $("search").value = "Missing";
+  Object.getOwnPropertyDescriptor(
+    dom.window.HTMLInputElement.prototype,
+    "value",
+  ).set.call($("search"), "Missing");
   $("search").dispatchEvent(event("input"));
-  assert.equal($("screens").querySelectorAll("button").length, 1);
+  await until(() => $("screens").querySelectorAll("button").length === 1);
   assert.equal(store.listEvidence({ screen: "ui/home" }).length, 1);
 });

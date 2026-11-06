@@ -12,11 +12,11 @@ browser functional and responsive verification, real Claude/Codex client session
 
 ## Milestone 2 — reproducible project loading and PR capture
 
-- Versioned project configuration and validated schema.
-- Project-specific capture adapters for browser, Electron, and iOS Simulator.
-- Isolated build directories; immutable merge-base and head capture provenance.
-- Explicit execution policy for repository commands; no import-time execution.
-- GitHub PR URL/number resolution, stale-head detection and precise status reporting.
+Implemented for browser projects: versioned configuration, isolated exact-commit
+capture, explicit execution, PR metadata and stale-head detection.
+
+Remaining:
+- Native capture adapters for Electron and iOS Simulator.
 - Native and web fixture consistency checks.
 
 ## Milestone 3 — agent collaboration and coverage

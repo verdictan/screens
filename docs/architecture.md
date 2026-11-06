@@ -5,7 +5,7 @@
 `src/store.mjs` owns domain rules and SQLite persistence. `src/server.mjs` owns
 loopback HTTP and static serving. `src/mcp.mjs` exposes a deliberately small MCP
 surface. `src/import.mjs` adapts project evidence. `src/cli.mjs` composes these
-operations. `public/` contains the browser review interface with no build step.
+operations. `ui/` contains the React review interface, shadcn primitives and Tailwind styling. Vite builds `dist/ui/`, which the same HTTP server serves.
 
 There is one database, not one JSON review file per browser. Direct stdio clients
 open the same database. WAL and a busy timeout coordinate writers across processes.
@@ -67,7 +67,7 @@ transport security and enforced evidence provenance before enabling remote acces
 ## Capture execution
 
 Import never executes a repository. PR metadata comes from gh, with exact head,
-base and merge-base identifiers. Capture adapters are the next milestone. Native
+base and merge-base identifiers. The explicit browser adapter clones exact commits into temporary checkouts, runs reviewed argument-array commands, captures matching variants, records provenance and removes temporary checkouts. Native
 applications must use native capture. Web screenshots must use fixture-controlled
 browser sessions. Existing evidence can be imported without being falsely
 presented as freshly verified runtime evidence.

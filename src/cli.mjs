@@ -9,6 +9,11 @@ import { makeServer } from "./server.mjs";
 import { protocol } from "./mcp.mjs";
 import { discover, importManifest, combineRuns } from "./import.mjs";
 import { createDiff } from "./diff.mjs";
+import {
+  captureRevision,
+  captureComparison,
+  resolvePullRequest,
+} from "./capture.mjs";
 
 function args(values) {
   const options = {},
@@ -36,13 +41,16 @@ const help = `Screens — central screen evidence and review
   screens list --project ID
   screens compare --project ID --current RUN --target RUN --pr RUN
   screens pr-context OWNER/REPO NUMBER [--output FILE]
+  screens capture --repo PATH --ref SHA --config FILE --output DIR --role current|target|pr --execute yes
+  screens capture-pr OWNER/REPO NUMBER --repo PATH --config FILE --output DIR --execute yes [--target RUN]
+  screens capture-refs --repo PATH --base REF --head REF --config FILE --output DIR --execute yes [--target RUN]
   screens mcp [--data DIR] [--url http://127.0.0.1:4800]
 
 All storage commands accept --data DIR or SCREENS_HOME.
 Default storage: ~/.local/share/verdictan-screens
 load accepts a supported JSON manifest or discovers manifests in a project directory.
 compare accepts imported run IDs, not GitHub PR numbers. pr-context resolves GitHub
-metadata only; build/capture execution is deliberately separate in v0.1.
+metadata only. capture-pr runs explicitly authorized browser recipes in isolated Git checkouts.
 MCP uses stdio with the shared database by default, or bridges to --url.
 The running review service also exposes a Streamable HTTP endpoint at /mcp.
 `;
@@ -141,38 +149,7 @@ async function main() {
     return;
   }
   if (command === "pr-context") {
-    const repo = p[1],
-      number = p[2];
-    if (
-      !/^[\w.-]+\/[\w.-]+$/.test(repo || "") ||
-      !/^[1-9]\d*$/.test(number || "")
-    )
-      throw new Error("Use pr-context OWNER/REPO NUMBER");
-    const gh = (...a) =>
-      JSON.parse(
-        execFileSync("gh", a, {
-          encoding: "utf8",
-          maxBuffer: 5 * 1024 * 1024,
-          timeout: 30000,
-        }),
-      );
-    const pr = gh("api", `repos/${repo}/pulls/${number}`);
-    const comparison = gh(
-      "api",
-      `repos/${repo}/compare/${pr.base.sha}...${pr.head.sha}`,
-    );
-    const context = {
-      repository: repo,
-      number: Number(number),
-      url: pr.html_url,
-      title: pr.title,
-      base: pr.base.sha,
-      head: pr.head.sha,
-      mergeBase: comparison.merge_base_commit.sha,
-      headRepository: pr.head.repo?.full_name || null,
-      resolvedAt: new Date().toISOString(),
-      captureStatus: "not-captured",
-    };
+    const context = resolvePullRequest(p[1], p[2]);
     if (o.output)
       writeFileSync(
         resolve(o.output),
@@ -216,6 +193,21 @@ async function main() {
             process.exit(0);
           }),
         );
+    } else if (command === "capture") {
+      print(await captureRevision(store, o));
+    } else if (["capture-pr", "capture-refs"].includes(command)) {
+      print(
+        await captureComparison(store, {
+          ...o,
+          verifyPR: command === "capture-pr",
+          context:
+            command === "capture-pr"
+              ? resolvePullRequest(p[1], p[2])
+              : o.context
+                ? JSON.parse(readFileSync(resolve(o.context), "utf8"))
+                : undefined,
+        }),
+      );
     } else if (command === "diff") {
       print(
         await createDiff(store, {

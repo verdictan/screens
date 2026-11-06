@@ -321,16 +321,19 @@ export class Store {
           : "missing-evidence";
       entry.compatible =
         new Set(Object.values(entry.captures).map((c) => c.fixture)).size === 1;
-      entry.openNotes = Object.values(entry.captures).reduce(
-        (n, c) =>
-          n +
-          this.getScreen(c.screen).notes.filter(
-            (note) =>
-              note.capture === c.id &&
-              !["verified", "wont-fix"].includes(note.status),
-          ).length,
-        0,
+      const screenDetail = this.getScreen(entry.screen);
+      const variantIds = new Set(
+        screenDetail.captures
+          .filter(
+            (c) => JSON.stringify(c.variant) === JSON.stringify(entry.variant),
+          )
+          .map((c) => c.id),
       );
+      entry.openNotes = screenDetail.notes.filter(
+        (note) =>
+          variantIds.has(note.capture) &&
+          !["verified", "wont-fix"].includes(note.status),
+      ).length;
       entry.targetApproval = target
         ? (this.db
             .prepare(

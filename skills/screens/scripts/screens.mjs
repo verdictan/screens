@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -40,17 +40,26 @@ if (config.runtime === "docker") {
     parameters = [...prefix, "up", "-d", "--build"];
   else {
     const mounts = [];
-    const mapFile = (index, isDirectory = false) => {
+    const mapFile = (index, isDirectory = false, writable = false) => {
       if (!args[index]) throw Error("Missing input path");
       const source = resolve(args[index]),
         mount = isDirectory ? source : dirname(source),
         target = `/input${mounts.length}`;
-      mounts.push("--volume", `${mount}:${target}:ro`);
+      if (writable) mkdirSync(mount, { recursive: true });
+      mounts.push("--volume", `${mount}:${target}:${writable ? "rw" : "ro"}`);
       args[index] = isDirectory ? target : `${target}/${basename(source)}`;
     };
     if (args[0] === "load") mapFile(1, !args[1]?.endsWith(".json"));
     if (args[0] === "evidence" && args[1] === "add") mapFile(2);
-    for (const flag of ["--context", "--masks"]) {
+    if (args[0] === "capture-pr")
+      throw Error(
+        "Docker: resolve pr-context on the host, then use capture-refs --context FILE --base SHA --head SHA with this helper.",
+      );
+    const repoIndex = args.indexOf("--repo");
+    if (repoIndex >= 0) mapFile(repoIndex + 1, true);
+    const outputIndex = args.indexOf("--output");
+    if (outputIndex >= 0) mapFile(outputIndex + 1, false, true);
+    for (const flag of ["--context", "--masks", "--config"]) {
       const i = args.indexOf(flag);
       if (i >= 0) mapFile(i + 1);
     }

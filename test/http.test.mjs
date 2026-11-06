@@ -49,7 +49,7 @@ function setup(t) {
 test("HTTP routes, origin and host checks, static delivery and mutations", async (t) => {
   const { request } = setup(t),
     html = await request("/");
-  assert.match(html.body, /Screen library/);
+  assert.match(html.body, /id="root"/);
   assert.match(
     html.headers["content-security-policy"],
     /frame-ancestors 'none'/,
