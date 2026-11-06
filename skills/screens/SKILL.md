@@ -42,7 +42,16 @@ name as the workflow arguments, not as an arbitrary shell command. Quote paths.
    This reads GitHub metadata; it does not build or capture the application.
 3. Reuse capture evidence only if it matches the exact head and merge-base SHA,
    fixture, device, viewport, theme, locale and text scale.
-4. When captures are missing, read the project's supported capture procedure.
+4. When browser captures are missing, read the project's capture configuration.
+   With authorization to execute its reviewed commands, use
+   `node "$SCREENS_HELPER" capture-pr OWNER/REPO NUMBER --repo PROJECT --config CONFIG --output NEW_DIRECTORY --execute yes`.
+   Fetch the exact PR commits into the source repository first. The runner clones
+   those commits into isolated checkouts and records revision, configuration and
+   browser provenance. Add `--target TARGET_RUN_ID` when one is available.
+   In Docker mode, resolve pr-context on the host, then use `capture-refs --context
+   CONTEXT_FILE --repo PROJECT --config CONFIG --output NEW_DIRECTORY --execute yes`.
+   This keeps host GitHub credentials outside the image. For native applications,
+   read the project's supported capture procedure.
    Run only authorized project commands in isolated checkouts. Follow its native
    capture requirements; never substitute a browser renderer for a native app.
    If execution is blocked, report the missing side and keep available evidence.
@@ -87,6 +96,6 @@ invent artifacts. Evidence records are reporter-supplied and never an approval.
 
 ## Limits
 
-Screens has no automatic capture runner, change-to-screen dependency map, claim leases,
+Screens has no native capture runner, change-to-screen dependency map, claim leases,
 background jobs or hosted authentication. Use documented CLI/MCP operations only.
 Preserve old evidence and notes. Never infer a visual match from file hash changes.

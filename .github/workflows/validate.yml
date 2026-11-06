@@ -11,12 +11,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run check && npm test && npm run test:integration
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Capture actual PR base and head
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCREENS_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/prove-pr.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens-workflow-proof
+          path: |
+            test-results/
+            playwright-report/
       - run: npm run skills:validate && npm run skills:package
       - uses: actions/upload-artifact@v4
         with:

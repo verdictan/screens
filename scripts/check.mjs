@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-for (const dir of ["src", "public", "test", "scripts"])
+for (const dir of ["src", "test", "scripts"])
   for (const file of readdirSync(dir))
     if (/\.(mjs|js)$/.test(file))
       execFileSync(process.execPath, ["--check", `${dir}/${file}`], {

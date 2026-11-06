@@ -264,7 +264,7 @@ export function protocol(store) {
         result: {
           protocolVersion: "2025-03-26",
           capabilities: { tools: {} },
-          serverInfo: { name: "verdictan-screens", version: "0.2.0" },
+          serverInfo: { name: "verdictan-screens", version: "0.3.0" },
           instructions:
             "Use screens_search, then screens_get and captures_view. Submit evidence; human review decides acceptance. Imported targets are not automatically approved.",
         },

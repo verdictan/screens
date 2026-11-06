@@ -3,5 +3,11 @@
 !package-lock.json
 !src/
 !src/**
-!public/
-!public/**
+!ui/
+!ui/**
+!vite.config.mjs
+!jsconfig.json
+!components.json
+!scripts/
+!scripts/seed-proof.mjs
+!scripts/smoke-deployment.mjs

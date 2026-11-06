@@ -3,7 +3,7 @@
 A local screen registry for people, Claude Code and Codex. Keep current captures,
 design targets, PR results and review feedback in one place.
 
-## Implemented in v0.2
+## Implemented
 
 - SQLite registry shared by the CLI, web picker and MCP tools.
 - Immutable, SHA-256-addressed PNG/JPEG/WebP images and immutable comparison runs.
@@ -19,18 +19,16 @@ design targets, PR results and review feedback in one place.
 - Docker Compose with persistent storage, health checks and loopback publishing.
 - GitHub PR metadata resolution with pinned head, base and merge-base SHAs.
 
-This is an implementation starter, not a hosted multi-user service. Automated PR
-build/capture, issue leases, authentication and historical
-annotation migration are tracked in [the roadmap](docs/roadmap.md).
+This is an implementation starter, not a hosted multi-user service. Issue leases, authentication and change-to-screen mapping are tracked in [the roadmap](docs/roadmap.md).
 
 ## Run
 
-Requires Node 22.13 or newer with `node:sqlite`. Node 22 reports an experimental
-SQLite warning on stderr. Sharp decodes raster images for pixel differences; no UI build step is required.
+Requires Node 22.22.2 or newer with `node:sqlite`. Node 22 reports an experimental
+SQLite warning on stderr. Sharp decodes raster images for pixel differences. The React picker uses shadcn components and Tailwind CSS; Vite produces the bundled interface.
 
 ```sh
 npm ci
-node src/cli.mjs serve
+npm start
 ```
 
 Or run `docker compose up -d --build --wait`; see [Docker deployment](docs/deployment.md) for importing into its persistent volume.
@@ -62,10 +60,26 @@ Resolve metadata using an authenticated GitHub CLI:
 node src/cli.mjs pr-context verdictan/example 123 --output pr-context.json
 ```
 
-This resolves refs only. It does not build a PR or generate screenshots. Capture
-the merge base and exact PR head using the project's supported tools and identical
-fixtures. Keep the original working tree intact. Import each capture manifest,
-then combine their run IDs:
+For browser projects, copy `examples/proof.capture.json` and specify deterministic routes,
+viewports, fixture identity, preparation commands and a server command that uses `PORT`.
+Review these commands before permitting execution:
+
+```sh
+npx playwright install chromium
+node src/cli.mjs capture-pr OWNER/REPO 123 --repo /path/to/project \
+  --config /path/to/capture.json --output /path/to/new-evidence --execute yes
+```
+
+The runner resolves exact refs, clones into an isolated temporary checkout, prepares
+and starts each revision, waits for readiness, and captures matching variants. It
+records the SHA, configuration hash, browser version and image hash. It refuses to
+publish a comparison if the PR head changes during capture. Fetch the PR commits into
+the local repository first. Native applications still require native capture tools.
+
+Use `capture-refs --base SHA --head SHA` for locally available revisions, or `capture
+--ref SHA --role target` for a separate target. Add `--target TARGET_RUN_ID` to a PR
+comparison when an existing design target is available. Targets are never invented
+or approved automatically. Existing manifests can still be combined:
 
 ```sh
 node src/cli.mjs compare --project example \
@@ -73,10 +87,9 @@ node src/cli.mjs compare --project example \
   --context pr-context.json --title 'PR 123'
 ```
 
-Each input run should contain the corresponding role, or a single capture per
-screen/variant. Ambiguous role selection fails instead of choosing silently.
-Source metadata is recorded as supplied; v0.2 does not attest that a screenshot
-actually came from that build. Re-import after PR changes to create a new run.
+Each input run must have an unambiguous capture per screen, role and variant.
+The browser adapter records execution provenance; it does not provide cryptographic
+attestation or prove live-account behavior.
 
 ## Connect agents
 
@@ -142,6 +155,8 @@ human review decides acceptance. See [evidence format](docs/evidence.md).
 npm test
 npm run check
 npm run test:integration
+npx playwright install chromium
+npm run test:e2e
 ```
 
 The main suite tests persistence, capture identity, annotation binding, concurrent

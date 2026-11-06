@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { protocol } from "./mcp.mjs";
 import { Fault, requireThat } from "./validation.mjs";
@@ -19,11 +19,7 @@ async function body(req) {
     throw new Fault(400, "Invalid JSON");
   }
 }
-const publicFiles = new Map([
-  ["/", "index.html"],
-  ["/app.js", "app.js"],
-  ["/style.css", "style.css"],
-]);
+const uiRoot = fileURLToPath(new URL('../dist/ui/', import.meta.url));
 export function requestHandler(store, getPort) {
   const rpc = protocol(store);
   return async (req, res) => {
@@ -87,23 +83,14 @@ export function requestHandler(store, getPort) {
         return send(200, result);
       }
       if (req.method === "GET") {
-        if (publicFiles.has(path)) {
-          const filename = publicFiles.get(path),
-            bytes = readFileSync(
-              fileURLToPath(new URL(`../public/${filename}`, import.meta.url)),
-            );
-          return send(
-            200,
-            bytes,
-            filename.endsWith(".html")
-              ? "text/html; charset=utf-8"
-              : filename.endsWith(".js")
-                ? "text/javascript; charset=utf-8"
-                : "text/css; charset=utf-8",
-          );
+        if (path === '/' || /^\/assets\/[a-zA-Z0-9_-]+\.(js|css)$/.test(path)) {
+          const filename = path === '/' ? 'index.html' : path.slice(1);
+          const file = `${uiRoot}${filename}`;
+          requireThat(existsSync(file), path === '/' ? 'Frontend is not built. Run npm run build.' : 'Asset not found', path === '/' ? 503 : 404);
+          return send(200, readFileSync(file), filename.endsWith('.html') ? 'text/html; charset=utf-8' : filename.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8');
         }
         if (path === "/api/health")
-          return send(200, { ok: true, version: "0.2.0" });
+          return send(200, { ok: true, version: "0.3.0" });
         if (path === "/api/projects") return send(200, store.projects());
         if (path === "/api/screens")
           return send(
