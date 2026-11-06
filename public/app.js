@@ -13,6 +13,9 @@ const state = {
   pair: ["current", "target"],
   point: null,
   loading: 0,
+  navigation: 0,
+  masks: [],
+  diffTicket: 0,
 };
 const h = (tag, attrs = {}, ...children) => {
   const e = document.createElement(tag);
@@ -83,8 +86,14 @@ function updateUrl() {
   history.replaceState(null, "", u);
 }
 async function loadProject(project, runId) {
+  const ticket = ++state.navigation;
+  ++state.loading;
+  ++state.diffTicket;
+  $("review").hidden = true;
   state.project = project;
-  state.runs = await api(`/api/runs?project=${encodeURIComponent(project)}`);
+  const runs = await api(`/api/runs?project=${encodeURIComponent(project)}`);
+  if (ticket !== state.navigation) return;
+  state.runs = runs;
   $("run").replaceChildren(
     ...state.runs.map((r) => h("option", { value: r.id }, r.title)),
   );
@@ -102,7 +111,13 @@ async function loadProject(project, runId) {
   await loadRun(run.id);
 }
 async function loadRun(id) {
-  state.run = await api(`/api/compare?run=${encodeURIComponent(id)}`);
+  const ticket = ++state.navigation;
+  ++state.loading;
+  ++state.diffTicket;
+  $("review").hidden = true;
+  const run = await api(`/api/compare?run=${encodeURIComponent(id)}`);
+  if (ticket !== state.navigation) return;
+  state.run = run;
   const desired = decodeURIComponent(location.hash.slice(1));
   const entry =
     state.run.entries.find((e) => entryKey(e) === desired) ||
@@ -155,8 +170,11 @@ function renderNav() {
 }
 async function selectEntry(entry) {
   const ticket = ++state.loading;
+  ++state.diffTicket;
+  $("review").hidden = true;
   state.entry = entry;
   state.point = null;
+  state.masks = [];
   renderNav();
   updateUrl();
   const detail = await api(
@@ -165,6 +183,7 @@ async function selectEntry(entry) {
   if (ticket !== state.loading) return;
   state.detail = detail;
   render();
+  $("review").hidden = false;
 }
 function captureNotes(c) {
   return state.detail.notes.filter((n) => n.capture === c.id);
@@ -270,9 +289,31 @@ function validateOverlay() {
   }
 }
 function renderComparison() {
+  ++state.diffTicket;
+  $("diff-result").replaceChildren(
+    h(
+      "p",
+      { class: "muted" },
+      "Not measured for this pair. Pink marks changed pixels; blue marks excluded regions.",
+    ),
+  );
+  $("mask-list").textContent = state.masks.length
+    ? state.masks
+        .map((m) => `(${m.x}, ${m.y}) ${m.width} × ${m.height}`)
+        .join("; ")
+    : "No excluded regions.";
   const [a, b] = state.pair,
     ca = state.entry.captures[a],
     cb = state.entry.captures[b];
+  $("measure").disabled = !ca || !cb;
+  const saved = state.entry.measurements?.find(
+    (d) =>
+      d.left === ca?.id &&
+      d.right === cb?.id &&
+      d.threshold === Number($("diff-threshold").value) &&
+      JSON.stringify(d.masks) === JSON.stringify(state.masks),
+  );
+  if (saved) showDiffResult(saved);
   const overlay = $("view").value === "overlay" && ca && cb;
   $("opacity-label").hidden = !overlay;
   $("comparison").className = overlay ? "comparison overlay" : "comparison";
@@ -400,10 +441,16 @@ function render() {
   $("title").textContent = e.title;
   $("variant").textContent =
     `${e.variant.device} · ${e.variant.theme} · ${e.variant.viewport} · ${e.variant.locale}`;
-  $("warnings").replaceChildren(
-    ...state.run.warnings.map((w) => h("p", {}, w)),
-  );
-  $("warnings").hidden = !state.run.warnings.length;
+  const warnings = [
+    ...state.run.warnings,
+    ...(state.run.uncoveredScreens?.length
+      ? [
+          `${state.run.uncoveredScreens.length} registered screens have no captures in this run: ${state.run.uncoveredScreens.map((s) => s.title).join(", ")}`,
+        ]
+      : []),
+  ];
+  $("warnings").replaceChildren(...warnings.map((w) => h("p", {}, w)));
+  $("warnings").hidden = !warnings.length;
   $("note-capture").replaceChildren(
     ...Object.entries(e.captures).map(([role, c]) =>
       h("option", { value: c.id }, labels[role]),
@@ -413,6 +460,7 @@ function render() {
   renderComparison();
   renderPinLabel();
   renderNotes();
+  renderEvidence();
   $("history").replaceChildren(
     ...state.detail.captures.map((c) =>
       h(
@@ -431,10 +479,196 @@ function render() {
   );
 }
 async function refresh() {
+  const ticket = state.navigation,
+    loading = state.loading;
   const key = entryKey(state.entry);
-  state.run = await api(`/api/compare?run=${state.run.id}`);
+  const run = await api(`/api/compare?run=${state.run.id}`);
+  if (ticket !== state.navigation || loading !== state.loading) return;
+  state.run = run;
   await selectEntry(state.run.entries.find((e) => entryKey(e) === key));
 }
+function renderEvidence() {
+  $("evidence-capture").replaceChildren(
+    ...Object.entries(state.entry.captures).map(([role, c]) =>
+      h("option", { value: c.id }, labels[role]),
+    ),
+  );
+  const ids = new Set(Object.values(state.entry.captures).map((c) => c.id));
+  const records = state.detail.evidence.filter((e) => ids.has(e.capture));
+  $("evidence-list").replaceChildren(
+    ...records.map((e) =>
+      h(
+        "article",
+        { class: "note" },
+        h(
+          "div",
+          { class: "note-head" },
+          h("strong", {}, e.assertion),
+          h("span", { class: "status" }, `Reported ${e.outcome}`),
+        ),
+        h(
+          "p",
+          { class: "muted" },
+          `${e.kind} · ${e.method} · ${e.author} · ${e.createdAt}`,
+        ),
+        h("p", {}, e.observation),
+        h(
+          "details",
+          {},
+          h("summary", {}, "Procedure and provenance"),
+          h("pre", {}, e.procedure),
+          h(
+            "p",
+            {},
+            `Capture ${e.capture} · revision ${e.sourceRevision} · fixture ${e.fixture}`,
+          ),
+        ),
+        e.artifact
+          ? h(
+              "a",
+              { href: e.artifact.url },
+              `Download ${e.artifact.mimeType} evidence · ${e.artifact.hash.slice(0, 12)}`,
+            )
+          : null,
+        h(
+          "p",
+          { class: "muted" },
+          "Reporter-supplied evidence. Acceptance has not been assessed.",
+        ),
+      ),
+    ),
+  );
+  if (!records.length)
+    $("evidence-list").append(
+      h("p", { class: "muted" }, "No checks recorded for these captures."),
+    );
+}
+$("add-mask").onclick = attempt(() => {
+  const m = Object.fromEntries(
+    ["x", "y", "width", "height"].map((k) => [k, Number($("mask-" + k).value)]),
+  );
+  if (
+    !Object.values(m).every(Number.isInteger) ||
+    m.x < 0 ||
+    m.y < 0 ||
+    m.width < 1 ||
+    m.height < 1
+  )
+    throw Error("Enter a valid pixel rectangle.");
+  if (state.masks.length >= 100) throw Error("At most 100 regions.");
+  state.masks.push(m);
+  renderComparison();
+});
+$("clear-masks").onclick = () => {
+  state.masks = [];
+  renderComparison();
+};
+$("diff-threshold").oninput = () => renderComparison();
+function showDiffResult(diff) {
+  $("diff-result").replaceChildren(
+    h(
+      "p",
+      {},
+      diff.status === "dimension-mismatch"
+        ? "Not measured: image dimensions differ. No resizing was applied."
+        : `${(diff.changedRatio * 100).toFixed(3)}% changed · ${diff.changedPixels.toLocaleString()} / ${diff.comparedPixels.toLocaleString()} compared pixels · ${diff.maskedPixels.toLocaleString()} masked`,
+    ),
+    h(
+      "p",
+      { class: "muted" },
+      `Fixture: ${diff.fixtureStatus}. Tolerance: ${diff.threshold}. Acceptance requires review.`,
+    ),
+    diff.url
+      ? h(
+          "a",
+          { href: diff.url, target: "_blank", rel: "noopener" },
+          h("img", {
+            class: "diff-image",
+            src: diff.url,
+            alt: "Pixel difference map: changed pixels pink, masked pixels blue",
+          }),
+        )
+      : null,
+    h(
+      "details",
+      {},
+      h("summary", {}, "Measurement provenance"),
+      h("pre", {}, JSON.stringify(diff, null, 2)),
+    ),
+  );
+}
+$("measure").onclick = attempt(async () => {
+  const ticket = ++state.diffTicket;
+  const [left, right] = state.pair.map((r) => state.entry.captures[r]);
+  $("measure").disabled = true;
+  $("diff-result").replaceChildren(h("p", { class: "muted" }, "Measuring…"));
+  try {
+    const diff = await api("/api/diffs", {
+      left: left.id,
+      right: right.id,
+      threshold: Number($("diff-threshold").value),
+      masks: state.masks,
+    });
+    if (ticket !== state.diffTicket) return;
+    state.entry.measurements = [
+      diff,
+      ...(state.entry.measurements || []).filter((d) => d.id !== diff.id),
+    ];
+    showDiffResult(diff);
+  } catch (e) {
+    if (ticket === state.diffTicket)
+      $("diff-result").replaceChildren(h("p", {}, e.message));
+    throw e;
+  } finally {
+    if (ticket === state.diffTicket) $("measure").disabled = false;
+  }
+});
+$("evidence-form").onsubmit = attempt(async (event) => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  const input = Object.fromEntries(
+    [
+      "capture",
+      "kind",
+      "method",
+      "outcome",
+      "assertion",
+      "procedure",
+      "observation",
+      "author",
+    ].map((k) => [k, $("evidence-" + k).value]),
+  );
+  try {
+    const file = $("evidence-file").files[0];
+    if (file) {
+      if (file.size > 20 * 1024 * 1024)
+        throw Error("Evidence artifact exceeds 20 MB.");
+      const types = {
+        txt: "text/plain",
+        log: "text/plain",
+        json: "application/json",
+        mp4: "video/mp4",
+        webm: "video/webm",
+      };
+      input.artifactType = types[file.name.split(".").pop().toLowerCase()];
+      if (!input.artifactType)
+        throw Error("Use a text/JSON report or MP4/WebM recording.");
+      input.artifactBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    await api("/api/evidence", input);
+    $("evidence-form").reset();
+    await refresh();
+    toast("Evidence saved to the exact capture.");
+  } finally {
+    button.disabled = false;
+  }
+});
 $("project").onchange = attempt(() => loadProject($("project").value));
 $("run").onchange = attempt(() => loadRun($("run").value));
 for (const id of ["search", "filter"])

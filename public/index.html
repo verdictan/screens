@@ -99,6 +99,131 @@
             <p id="comparison-status" class="muted"></p>
             <button id="approve" hidden>Approve this target</button>
           </div>
+          <section class="feedback" aria-labelledby="diff-heading">
+            <div class="section-heading">
+              <h2 id="diff-heading">Pixel differences</h2>
+              <span class="muted">Measurements, not an approval</span>
+            </div>
+            <div class="note-fields">
+              <label
+                >Channel tolerance (0–255)<input
+                  id="diff-threshold"
+                  type="number"
+                  min="0"
+                  max="255"
+                  value="0"
+              /></label>
+              <button id="measure">Measure selected pair</button>
+            </div>
+            <details>
+              <summary>Exclude dynamic regions</summary>
+              <p class="muted">
+                Masks use pixels in the original image. Masked areas appear blue
+                and are excluded from the score.
+              </p>
+              <div class="mask-fields">
+                <label
+                  >Left<input id="mask-x" type="number" min="0" value="0"
+                /></label>
+                <label
+                  >Top<input id="mask-y" type="number" min="0" value="0"
+                /></label>
+                <label
+                  >Width<input id="mask-width" type="number" min="1" value="1"
+                /></label>
+                <label
+                  >Height<input
+                    id="mask-height"
+                    type="number"
+                    min="1"
+                    value="1"
+                /></label>
+                <button id="add-mask">Add region</button
+                ><button id="clear-masks">Clear regions</button>
+              </div>
+              <p id="mask-list" class="muted">No excluded regions.</p>
+            </details>
+            <div id="diff-result" aria-live="polite">
+              <p class="muted">Not measured.</p>
+            </div>
+          </section>
+          <section class="feedback" aria-labelledby="evidence-heading">
+            <div class="section-heading">
+              <h2 id="evidence-heading">Verification evidence</h2>
+              <span class="muted">Reported checks on exact captures</span>
+            </div>
+            <p class="muted">
+              Attach observations, test reports, or motion recordings. A
+              reported pass does not approve the screen.
+            </p>
+            <form id="evidence-form">
+              <div class="note-fields">
+                <label
+                  >Capture<select id="evidence-capture" required></select
+                ></label>
+                <label
+                  >Check<select id="evidence-kind">
+                    <option value="visual">Visual</option>
+                    <option value="behavior">Behavior</option>
+                    <option value="accessibility">Accessibility</option>
+                    <option value="motion">Motion</option>
+                  </select></label
+                >
+                <label
+                  >Method<select id="evidence-method">
+                    <option value="manual">Manual observation</option>
+                    <option value="automated">Automated check</option>
+                    <option value="screenshot">Screenshot inspection</option>
+                  </select></label
+                >
+                <label
+                  >Reported result<select id="evidence-outcome">
+                    <option value="not-run">Not run</option>
+                    <option value="pass">Pass</option>
+                    <option value="fail">Fail</option>
+                  </select></label
+                >
+              </div>
+              <label
+                >What was checked?<input
+                  id="evidence-assertion"
+                  required
+                  maxlength="4000"
+                  placeholder="Keyboard focus returns to the dialog trigger"
+              /></label>
+              <label
+                >Reproduction steps or command<textarea
+                  id="evidence-procedure"
+                  required
+                  maxlength="10000"
+                ></textarea>
+              </label>
+              <label
+                >Observed result<textarea
+                  id="evidence-observation"
+                  required
+                  maxlength="10000"
+                ></textarea>
+              </label>
+              <div class="note-fields">
+                <label
+                  >Reporter<input
+                    id="evidence-author"
+                    required
+                    value="Reviewer"
+                    maxlength="500"
+                /></label>
+                <label
+                  >Report or recording (up to 20 MB)<input
+                    id="evidence-file"
+                    type="file"
+                    accept=".txt,.log,.json,.mp4,.webm"
+                /></label>
+              </div>
+              <button class="primary" type="submit">Save evidence</button>
+            </form>
+            <div id="evidence-list"></div>
+          </section>
           <section class="feedback">
             <div class="section-heading">
               <h2>Feedback</h2>

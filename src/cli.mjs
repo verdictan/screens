@@ -8,6 +8,7 @@ import { Store } from "./store.mjs";
 import { makeServer } from "./server.mjs";
 import { protocol } from "./mcp.mjs";
 import { discover, importManifest, combineRuns } from "./import.mjs";
+import { createDiff } from "./diff.mjs";
 
 function args(values) {
   const options = {},
@@ -26,7 +27,10 @@ const print = (value) =>
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 const help = `Screens — central screen evidence and review
 
-  screens serve [--port 4800] [--data DIR]
+  screens serve [--port 4800] [--data DIR] [--host 127.0.0.1]
+  screens diff --left CAPTURE --right CAPTURE [--threshold 0] [--masks FILE]
+  screens evidence add FILE
+  screens evidence list --capture CAPTURE
   screens load PATH --project ID [--name NAME] [--title TITLE]
   screens projects
   screens list --project ID
@@ -190,13 +194,16 @@ async function main() {
       const port = Number(o.port || process.env.PORT || 4800);
       if (!Number.isInteger(port) || port < 0 || port > 65535)
         throw new Error("Invalid port");
+      const host = o.host || process.env.SCREENS_HOST || "127.0.0.1";
+      if (!["127.0.0.1", "0.0.0.0"].includes(host))
+        throw new Error("Host must be 127.0.0.1 or 0.0.0.0 (container use)");
       const server = makeServer(store);
       server.on("error", (e) => {
         console.error(e.message);
         store.close();
         process.exitCode = 1;
       });
-      server.listen(port, "127.0.0.1", () =>
+      server.listen(port, host, () =>
         console.log(
           `Screens: http://127.0.0.1:${server.address().port}\nMCP: http://127.0.0.1:${server.address().port}/mcp`,
         ),
@@ -209,6 +216,26 @@ async function main() {
             process.exit(0);
           }),
         );
+    } else if (command === "diff") {
+      print(
+        await createDiff(store, {
+          left: o.left,
+          right: o.right,
+          threshold: o.threshold === undefined ? 0 : Number(o.threshold),
+          masks: o.masks
+            ? JSON.parse(readFileSync(resolve(o.masks), "utf8"))
+            : [],
+        }),
+      );
+    } else if (command === "evidence") {
+      if (p[1] === "add" && p[2])
+        print(
+          store.addEvidence(JSON.parse(readFileSync(resolve(p[2]), "utf8"))),
+        );
+      else if (p[1] === "list")
+        print(store.listEvidence({ capture: o.capture, screen: o.screen }));
+      else
+        throw new Error("Use evidence add FILE or evidence list --capture ID");
     } else if (command === "projects") print(store.projects());
     else if (command === "list")
       print(store.search({ project: o.project, query: o.query || "" }));
@@ -224,7 +251,7 @@ async function main() {
         print({
           ...result,
           url: result.run
-            ? `http://127.0.0.1:${o.port || 4800}/?project=${encodeURIComponent(result.project.id)}&run=${result.run.id}`
+            ? `http://127.0.0.1:${o.port || process.env.PORT || 4800}/?project=${encodeURIComponent(result.project.id)}&run=${result.run.id}`
             : null,
         });
       }
@@ -242,7 +269,7 @@ async function main() {
       });
       print({
         ...run,
-        url: `http://127.0.0.1:${o.port || 4800}/?project=${encodeURIComponent(run.project)}&run=${run.id}`,
+        url: `http://127.0.0.1:${o.port || process.env.PORT || 4800}/?project=${encodeURIComponent(run.project)}&run=${run.id}`,
       });
     } else throw new Error(`Unknown command ${command}\n${help}`);
   } finally {

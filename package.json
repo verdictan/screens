@@ -1,6 +1,6 @@
 {
   "name": "@verdictan/screens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "A local screen registry and visual review workspace for people and AI agents",
@@ -14,6 +14,15 @@
     "start": "node src/cli.mjs serve",
     "test": "node --test test/*.test.mjs",
     "test:integration": "node --test test/network.integration.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "skills:install": "node scripts/install-skills.mjs",
+    "skills:package": "node scripts/package-skills.mjs",
+    "skills:validate": "node scripts/validate-skills.mjs"
+  },
+  "dependencies": {
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.3"
   }
 }

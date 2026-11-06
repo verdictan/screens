@@ -1,0 +1,4 @@
+interface:
+  display_name: "Screens"
+  short_description: "Load projects and review exact screen evidence"
+  default_prompt: "Use $screens to load this project into the screen picker and report missing evidence."

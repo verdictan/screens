@@ -21,6 +21,11 @@ export class Store {
     mkdirSync(join(directory, "assets"), { recursive: true, mode: 0o700 });
     this.directory = directory;
     this.db = new DatabaseSync(join(directory, "screens.sqlite"));
+    requireThat(
+      this.db.prepare("PRAGMA user_version").get().user_version <= 2,
+      "Registry was created by a newer Screens version",
+      409,
+    );
     this.db
       .exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, data TEXT NOT NULL);
@@ -30,9 +35,12 @@ export class Store {
       CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, capture TEXT NOT NULL REFERENCES captures(id), revision INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS targets (screen TEXT NOT NULL REFERENCES screens(id), variant TEXT NOT NULL, capture TEXT NOT NULL REFERENCES captures(id), revision INTEGER NOT NULL, PRIMARY KEY(screen,variant));
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS diffs (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS evidence (id TEXT PRIMARY KEY, capture TEXT NOT NULL REFERENCES captures(id), data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS evidence_capture ON evidence(capture);
       CREATE INDEX IF NOT EXISTS captures_screen ON captures(screen);
       CREATE INDEX IF NOT EXISTS notes_capture ON notes(capture);
-      PRAGMA user_version=1;`);
+      PRAGMA user_version=2;`);
   }
   close() {
     this.db.close();
@@ -143,7 +151,13 @@ export class Store {
     const targets = this.db
       .prepare("SELECT capture,revision FROM targets WHERE screen=?")
       .all(id);
-    return { ...screen, captures, notes, targets };
+    return {
+      ...screen,
+      captures,
+      notes,
+      targets,
+      evidence: this.listEvidence({ screen: id }),
+    };
   }
   capture(input) {
     this.getScreen(input.screen);
@@ -192,9 +206,9 @@ export class Store {
       url: `/api/captures/${id}/image`,
     };
     this.db
-      .prepare("INSERT INTO captures VALUES (?,?,?,?)")
+      .prepare("INSERT OR IGNORE INTO captures VALUES (?,?,?,?)")
       .run(id, input.screen, hash, JSON.stringify(value));
-    return value;
+    return this.getCapture(id);
   }
   getCapture(id) {
     const value = parse(
@@ -252,6 +266,9 @@ export class Store {
       project,
       title: text(input.title, "run title"),
       captureIds: captures.map((c) => c.id),
+      uncoveredScreens: this.search({ project })
+        .filter((s) => !captures.some((c) => c.screen === s.id))
+        .map((s) => ({ id: s.id, title: s.title, state: s.state })),
       source: input.source || null,
       warnings: input.warnings || [],
       createdAt: now(),
@@ -281,7 +298,20 @@ export class Store {
       }
       groups.get(k).captures[c.role] = c;
     }
+    const measured = this.db
+      .prepare("SELECT data FROM diffs ORDER BY rowid DESC")
+      .all()
+      .map(parse)
+      .filter(
+        (d) =>
+          run.captureIds.includes(d.left) && run.captureIds.includes(d.right),
+      );
     for (const entry of groups.values()) {
+      const ids = new Set(Object.values(entry.captures).map((c) => c.id));
+      entry.measurements = measured.filter(
+        (d) => ids.has(d.left) && ids.has(d.right),
+      );
+      entry.pixelComparisonPair = ["current", "pr"];
       const { current, target, pr } = entry.captures;
       entry.pixelComparison =
         current && pr
@@ -310,7 +340,157 @@ export class Store {
             ?.revision ?? null)
         : null;
     }
-    return { ...run, entries: [...groups.values()] };
+    return {
+      ...run,
+      entries: [...groups.values()],
+      uncoveredScreens: run.uncoveredScreens ?? [],
+    };
+  }
+  findDiff(id) {
+    return parse(this.db.prepare("SELECT data FROM diffs WHERE id=?").get(id));
+  }
+  getDiff(id) {
+    const result = this.findDiff(text(id, "diff ID"));
+    requireThat(result, "Diff not found", 404);
+    return result;
+  }
+  saveAsset(hash, bytes) {
+    try {
+      writeFileSync(join(this.directory, "assets", hash), bytes, {
+        flag: "wx",
+        mode: 0o600,
+      });
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+    }
+  }
+  saveDiff(value, bytes) {
+    if (bytes) this.saveAsset(value.image, bytes);
+    this.db
+      .prepare("INSERT OR IGNORE INTO diffs VALUES (?,?)")
+      .run(value.id, JSON.stringify(value));
+    return this.getDiff(value.id);
+  }
+  diffImage(id) {
+    const diff = this.getDiff(id);
+    requireThat(diff.image, "Diff has no image", 404);
+    return readFileSync(join(this.directory, "assets", diff.image));
+  }
+  listEvidence({ capture, screen } = {}) {
+    requireThat(capture || screen, "Supply capture or screen");
+    return (
+      capture
+        ? this.db
+            .prepare(
+              "SELECT data FROM evidence WHERE capture=? ORDER BY rowid DESC",
+            )
+            .all(capture)
+        : this.db
+            .prepare(
+              "SELECT e.data FROM evidence e JOIN captures c ON e.capture=c.id WHERE c.screen=? ORDER BY e.rowid DESC",
+            )
+            .all(screen)
+    ).map(parse);
+  }
+  getEvidence(id) {
+    const value = parse(
+      this.db
+        .prepare("SELECT data FROM evidence WHERE id=?")
+        .get(text(id, "evidence ID")),
+    );
+    requireThat(value, "Evidence not found", 404);
+    return value;
+  }
+  addEvidence(input) {
+    const capture = this.getCapture(input.capture);
+    const kind = choice(
+      input.kind,
+      ["visual", "behavior", "accessibility", "motion"],
+      "evidence kind",
+    );
+    const method = choice(
+      input.method,
+      ["manual", "automated", "screenshot"],
+      "evidence method",
+    );
+    const outcome = choice(
+      input.outcome,
+      ["pass", "fail", "not-run"],
+      "reported outcome",
+    );
+    requireThat(
+      kind === "visual" || method !== "screenshot",
+      "Screenshots cannot verify behavior, accessibility or motion",
+    );
+    const assertion = text(input.assertion, "assertion", 4000);
+    const observation = text(input.observation, "observation", 10000);
+    const procedure = text(input.procedure, "procedure", 10000);
+    const author = text(input.author, "evidence author");
+    let artifact = null,
+      bytes;
+    if (input.artifactBase64 !== undefined) {
+      const mimeType = choice(
+        input.artifactType,
+        ["text/plain", "application/json", "video/mp4", "video/webm"],
+        "artifact type",
+      );
+      bytes = Buffer.from(
+        text(input.artifactBase64, "artifact", 28 * 1024 * 1024),
+        "base64",
+      );
+      requireThat(
+        bytes.length > 0 && bytes.length <= 20 * 1024 * 1024,
+        "Artifact must be 1 byte to 20 MB",
+      );
+      artifact = {
+        hash: createHash("sha256").update(bytes).digest("hex"),
+        mimeType,
+        byteSize: bytes.length,
+      };
+    }
+    requireThat(
+      method !== "automated" || outcome === "not-run" || artifact,
+      "Automated results require a captured report artifact",
+    );
+    const value = {
+      id: randomUUID(),
+      capture: capture.id,
+      captureHash: capture.hash,
+      sourceRevision: capture.revision,
+      fixture: capture.fixture,
+      kind,
+      method,
+      outcome,
+      assertion,
+      observation,
+      procedure,
+      author,
+      artifact,
+      createdAt: now(),
+      acceptance: "not-assessed",
+      provenance: "reporter-supplied",
+    };
+    if (artifact) {
+      this.saveAsset(artifact.hash, bytes);
+      value.artifact.url = `/api/evidence/${value.id}/artifact`;
+    }
+    this.transaction(() => {
+      this.db
+        .prepare("INSERT INTO evidence VALUES (?,?,?)")
+        .run(value.id, capture.id, JSON.stringify(value));
+      this.event("evidence.added", { evidence: value.id, capture: capture.id });
+    });
+    return value;
+  }
+  evidenceArtifact(id) {
+    const evidence = this.getEvidence(id);
+    requireThat(evidence.artifact, "No artifact attached", 404);
+    return {
+      bytes: readFileSync(
+        join(this.directory, "assets", evidence.artifact.hash),
+      ),
+      artifact: evidence.artifact,
+    };
   }
   addNote(input) {
     const capture = this.getCapture(input.capture);
