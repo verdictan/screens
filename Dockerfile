@@ -11,7 +11,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN npm ci --omit=dev && npm cache clean --force
-RUN apt-get update && apt-get install -y --no-install-recommends git && npx playwright install --with-deps chromium && chmod -R a+rX /ms-playwright && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git && node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /ms-playwright && rm -rf /var/lib/apt/lists/*
 COPY --chown=node:node src ./src
 COPY --chown=node:node scripts/seed-proof.mjs scripts/smoke-deployment.mjs ./scripts/
 COPY --from=build --chown=node:node /app/dist/ui ./dist/ui
