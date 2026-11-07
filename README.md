@@ -1,78 +1,123 @@
 # Screens
 
-A local workspace for design targets, implementation screenshots, and review feedback.
-Compare captures, pin feedback, and let your AI agent submit fixes with new evidence.
+**See what your app looks like, explain what needs to change, and review the result.**
 
-## Quick start
+Screens is a review board for your app's screenshots. It runs on your computer
+and opens in your web browser.
 
-Requires **Node.js 22.22.2+ and npm**.
+You can:
+
+- Compare how a screen looks now with how you want it to look.
+- Click a screenshot and leave a comment, such as “Make this button smaller.”
+- Ask your AI coding assistant to make the change and add a new screenshot.
+- Review the new version and decide whether the change is complete.
+
+Screens keeps earlier screenshots and comments, so you can see what changed.
+A matching screenshot does not prove that every button or feature works.
+
+## Get started with your AI assistant
+
+If you already use an AI coding assistant that can work with files and run commands,
+open your app's project and give it this request:
+
+> Install Screens from https://github.com/verdictan/screens, connect it to this
+> project, and start the review page. Load any existing screenshots and tell me
+> which screens still need screenshots.
+
+Setup includes instructions for Claude Code, Codex, Cursor, GitHub Copilot,
+Gemini CLI, and OpenCode. Other assistants can use the included connection guide.
+An ordinary chat window without access to your files or tools cannot set it up.
+
+## Set it up yourself
+
+### 1. Install the required tools
+
+You need **Node.js 22.22.2 or newer**, including npm, and **Git**.
+Node.js runs Screens. Git downloads its files. If you are unsure whether these
+are installed, ask your AI assistant to help with this step.
+
+### 2. Download and start Screens
+
+Open **Terminal** on macOS or Linux, or **PowerShell** on Windows.
+Run these two commands, one at a time:
 
 ```sh
 git clone https://github.com/verdictan/screens.git
 cd screens
+```
+
+Then run the command for your computer:
+
+**macOS or Linux**
+
+```sh
 bash install.sh --start
 ```
 
-Open **http://127.0.0.1:4800**. Keep the terminal open; press Ctrl+C to stop.
-The installer installs dependencies, builds the picker, downloads Chromium, and
-sets up agent workflows. It does not run tests or capture your application.
+**Windows**
 
-On Windows, use `powershell -File install.ps1 --start`. You can also run
-`npm run setup -- --start` on any platform with Node and npm.
-
-## Use it with your project
-
-```sh
-bash install.sh --project /path/to/your-app
+```powershell
+powershell -File install.ps1 --start
 ```
 
-Restart your agent, then ask:
+The first setup downloads the software Screens needs, so it can take a few minutes.
 
-> Use Screens to load this project and show missing screen evidence.
+### 3. Open the review page
 
-Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, and OpenCode can discover
-the installed workflow. Other agents can read `.screens/AGENTS.md` in your app.
-Any agent with command execution can use the helper; MCP clients can use the
-connection files generated in `.screens/`. See [agent setup](docs/agent-skills.md).
+Open **[http://127.0.0.1:4800](http://127.0.0.1:4800)** in your browser.
+This address points to your own computer.
 
-To import existing screenshots yourself, run this from your app:
+Keep the terminal window open while using Screens. Press **Ctrl+C** in that
+window to stop it. Your saved screenshots and comments remain available.
 
-```sh
-node .screens/scripts/screens.mjs load . --project my-app
-```
+The board starts empty. Installing Screens does not automatically take screenshots
+of your app.
 
-Start with [screens.json](examples/screens.json) if your app has no manifest.
-Replace its example paths with real captures. Import never runs application code.
+### 4. Connect your app
 
-## Docker
-
-With Node and Docker Compose installed:
+Your app's project folder is the folder that contains its code. Open another
+terminal in the downloaded `screens` folder and run:
 
 ```sh
-bash install.sh --runtime docker --start
+node scripts/setup.mjs --project "/path/to/your-app"
 ```
 
-Docker keeps the service running in the background and stores evidence in a named
-volume. Use the generated helper for imports so they reach that same volume.
-See [Docker and SSH deployment](docs/deployment.md).
+Replace `/path/to/your-app` with the full location of your app's folder. Keep the
+quotation marks, especially if the folder name contains spaces.
 
-## Useful options
+Restart your AI coding assistant in your app's project, then ask:
+
+> Use Screens to load this project. Show me the available screenshots and explain
+> what is missing.
+
+If there are no screenshots yet, ask your assistant to help prepare them.
+Taking new screenshots may need extra setup for your particular app.
+
+## Your review process
+
+1. **Choose a screen.** Open it in the review page.
+2. **Compare versions.** Look at the current screen, the intended design, or a proposed change.
+3. **Leave feedback.** Click a screenshot and describe what needs to change.
+4. **Ask your assistant to fix it.** It can make the code change and add a fresh screenshot.
+5. **Review the result.** You decide whether to accept the design or mark the fix as verified.
+
+## Open Screens again later
+
+From the downloaded `screens` folder, run:
 
 ```sh
-bash install.sh --project /path/to/app --client cursor,copilot
-bash install.sh --data /path/to/registry --port 4900 --start
-bash install.sh --skip-browser
-bash install.sh --project /path/to/app --replace yes
+node .screens/scripts/screens.mjs serve
 ```
 
-Run `bash install.sh --help` for all options. To start an installed project later:
+Then open **[the review page](http://127.0.0.1:4800)** again.
 
-```sh
-node /path/to/app/.screens/scripts/screens.mjs serve
-```
+## More help
 
-Screens is a trusted local service. Keep it on loopback. Agents submit evidence;
-humans approve targets and verify fixes. A zero pixel difference is not acceptance.
+- [Connect an AI assistant](docs/agent-skills.md) — including assistants that do not find Screens automatically.
+- [Setup options and detailed usage](docs/usage.md) — different folders, ports, and screenshot imports.
+- [Docker setup](docs/deployment.md) — an optional way to keep Screens running in the background.
+- [Review evidence](docs/evidence.md) — attach reports and recordings as well as screenshots.
+- [Planned features](docs/roadmap.md) — what is still being developed.
 
-[Usage and PR capture](docs/usage.md) · [Evidence](docs/evidence.md) ·
-[Standalone proof](docs/standalone-proof.md) · [Roadmap](docs/roadmap.md)
+Screens is intended for use on your own computer. It has no account sign-in,
+so do not make it publicly accessible on the internet.
