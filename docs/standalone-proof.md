@@ -32,7 +32,8 @@ tests and fixture directories, not local registries, dependencies or credentials
 5. Replay the captured images through HTTP MCP into an empty production container.
    Exercise comparison, pinned feedback, approval, conflict rejection, fix
    submission, UI verification, behavioral evidence and a zero final difference.
-6. Restart the production container and check the persisted note, approval,
+6. Stop the proof client, restart the production container, then start the client
+   to rejoin the registry's network namespace. Check the persisted note, approval,
    evidence attachment, diff, and original/fixed image SHA-256 hashes via the UI/API.
 
 Each run uses a unique Compose project, a disposable volume, and no published
@@ -65,11 +66,22 @@ are automated assertions in a disposable test project.
 
 ## Current execution status
 
-The assistant session attempted live HTTP and browser tests on 7 November 2026.
-Listening sockets were denied (`listen EPERM`) and Chromium startup was denied by
-the macOS sandbox. SSH to the requested host was also denied before connection.
-The user separately reported a successful Docker deployment and HTTP/MCP/restart
-smoke check. That is deployment evidence, not a completed browser proof.
+The standalone proof passed on 7 November 2026 at 10:35 Europe/Madrid, over SSH
+on the Docker host, without GitHub Actions. Run `20261107T093348Z-85433` passed
+37 unit tests, one live HTTP/stdio bridge test, and all three browser phases with
+no skipped, unexpected or flaky browser results. Syntax and skill package checks
+also passed. Earlier session access restrictions did not block this run.
 
-The standalone runner must finish and its results must be inspected before the
-full workflow is reported as passed.
+The deliberate regression changed 4,392 pixels. The fresh fixed capture matched
+the target at zero changed pixels out of 1,152,000, with no masks and zero tolerance.
+After the production container restarted, the browser/API checks confirmed the
+same feedback, target, evidence attachment, measurement and all four capture hashes.
+The 912px and 390px screenshots were inspected. Test containers and their disposable
+volume were removed after reports were copied back.
+
+Local evidence: [summary](../test-results/docker-proof-20261107T093348Z-85433/summary.json),
+[workflow report](../test-results/docker-proof-20261107T093348Z-85433/workflow/report/index.html),
+[production report](../test-results/docker-proof-20261107T093348Z-85433/deployment/report/index.html),
+and [restart report](../test-results/docker-proof-20261107T093348Z-85433/restart/report/index.html).
+These artifacts remain excluded from Git. The tested source archive SHA-256 is
+`a6207b9e96cc56bf6099ca8a8b837b0f6c22b499d01b804a4372ee192895b297`.

@@ -20,7 +20,7 @@ if [[ ${1:-} != --local ]]; then
   mkdir -p test-results
   archive=$(mktemp "${TMPDIR:-/tmp}/screens-proof.XXXXXX")
   trap 'rm -f "$archive"' EXIT
-  COPYFILE_DISABLE=1 tar -czf "$archive" "${source_files[@]}"
+  COPYFILE_DISABLE=1 tar --no-xattrs -czf "$archive" "${source_files[@]}"
   source_hash=$(hash_file "$archive")
   if [[ -z "$destination" ]]; then
     bash scripts/prove-workflow.sh --local "$run_id" "$source_hash"
@@ -87,9 +87,11 @@ docker inspect --format '{{json .Image}}' "$runner" > "$output/proof-image.json"
 docker exec "$runner" node scripts/proof-phase.mjs workflow
 docker exec "$runner" node scripts/proof-phase.mjs deployment
 "${compose[@]}" exec -T registry node scripts/smoke-deployment.mjs write
+docker stop "$runner"
 "${compose[@]}" restart registry
-"${compose[@]}" up -d --wait registry
+"${compose[@]}" start --wait registry
 "${compose[@]}" exec -T registry node scripts/smoke-deployment.mjs read
+docker start "$runner"
 docker exec "$runner" node scripts/proof-phase.mjs restart
 docker exec -e "SCREENS_PROOF_SOURCE_HASH=$source_hash" "$runner" node scripts/proof-phase.mjs summarize
 }

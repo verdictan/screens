@@ -25,7 +25,11 @@ export function requestHandler(store, getPort) {
   return async (req, res) => {
     const send = (status, data, type = "application/json") => {
       res.writeHead(status, { "content-type": type });
-      res.end(type === "application/json" ? JSON.stringify(data) : data);
+      res.end(
+        type === "application/json" && !Buffer.isBuffer(data)
+          ? JSON.stringify(data)
+          : data,
+      );
     };
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "no-store");

@@ -116,7 +116,9 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
     const claude = join(repo, ".claude/skills/screens/scripts/screens.mjs"),
       codex = join(repo, ".agents/skills/screens/scripts/screens.mjs");
     for (const helper of [claude, codex]) {
-      const loaded = JSON.parse(node([helper, "load", captured.pr.manifest]));
+      const loaded = JSON.parse(node([
+        helper, "load", captured.pr.manifest, "--project", "workflow-proof",
+      ]));
       expect(loaded.run.captureIds).toEqual(captured.pr.run.captureIds);
       expect(
         rpc(helper, "initialize", {
