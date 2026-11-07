@@ -143,6 +143,7 @@ Then open **[the review page](http://127.0.0.1:4800)** again.
 - [Setup options and detailed usage](docs/usage.md) — different folders, ports, and screenshot imports.
 - [Docker setup](docs/deployment.md) — an optional way to keep Screens running in the background.
 - [Review evidence](docs/evidence.md) — attach reports and recordings as well as screenshots.
+- [Tests and coverage](docs/testing.md) — run the complete checks and open the coverage report.
 - [Planned features](docs/roadmap.md) — what is still being developed.
 
 Screens is intended for use on your own computer. It has no account sign-in,

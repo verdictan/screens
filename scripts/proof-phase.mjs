@@ -15,7 +15,7 @@ const run = (...args) => execFileSync(process.execPath, args, {
 
 if (phase === "workflow") {
   run("scripts/check.mjs");
-  run("--test", ...readdirSync("test").filter((p) => p.endsWith(".test.mjs")).map((p) => `test/${p}`));
+  run("--experimental-vm-modules", "--test", ...readdirSync("test").filter((p) => p.endsWith(".test.mjs")).map((p) => `test/${p}`));
   run("--test", "test/network.integration.mjs");
   run("scripts/validate-skills.mjs");
   run("scripts/package-skills.mjs", "test-results/skills");

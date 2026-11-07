@@ -12,7 +12,7 @@
   },
   "scripts": {
     "start": "node src/cli.mjs serve",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --experimental-vm-modules --test test/*.test.mjs",
     "test:integration": "node --test test/network.integration.mjs",
     "check": "node scripts/check.mjs",
     "skills:install": "node scripts/install-skills.mjs",
@@ -21,9 +21,10 @@
     "build": "vite build",
     "prestart": "npm run build",
     "test:e2e": "playwright test",
-    "test:all": "npm run build && npm run check && npm test && npm run test:integration && npm run test:e2e",
+    "test:all": "npm run check && npm run test:coverage",
     "pretest": "npm run build",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "test:coverage": "vite build --mode coverage && c8 node --experimental-vm-modules --test test/*.test.mjs test/network.integration.mjs && playwright test test/e2e/workflow.spec.mjs test/e2e/theme.spec.mjs"
   },
   "dependencies": {
     "sharp": "0.35.5",
@@ -44,6 +45,15 @@
     "tailwindcss": "4.3.3",
     "@tailwindcss/postcss": "4.3.3",
     "postcss": "8.5.30",
-    "@playwright/test": "1.64.1"
+    "@playwright/test": "1.64.1",
+    "c8": "12.0.0"
+  },
+  "overrides": {
+    "c8": {
+      "test-exclude": {
+        "glob": "14.0.4",
+        "minimatch": "11.0.5"
+      }
+    }
   }
 }

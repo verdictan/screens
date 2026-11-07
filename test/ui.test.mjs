@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { Script } from "node:vm";
+import { takeCoverage } from "node:v8";
 import { Readable } from "node:stream";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import sharp from "sharp";
 import { Store } from "../src/store.mjs";
 import { requestHandler } from "../src/server.mjs";
@@ -26,6 +27,7 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
     pretendToBeVisual: true,
   });
   t.after(() => {
+    takeCoverage();
     dom.window.close();
     store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -86,7 +88,7 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
   const bundle = readFileSync("dist/ui/index.html", "utf8").match(
     /src="(\/assets\/[^"]+\.js)"/,
   )[1];
-  new Script(readFileSync("dist/ui" + bundle, "utf8")).runInContext(
+  new Script(readFileSync("dist/ui" + bundle, "utf8"), { filename: resolve("dist/ui" + bundle) }).runInContext(
     dom.getInternalVMContext(),
   );
   const $ = (id) => dom.window.document.getElementById(id),

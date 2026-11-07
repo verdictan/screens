@@ -126,7 +126,7 @@ export function App() {
     setMenu(false);
   };
   const index = list.findIndex(
-    (e) => entryKey(e) === entryKey(entry || { variant: {} }),
+    (e) => entryKey(e) === entryKey(entry),
   );
   useEffect(() => {
     const onKey = (event) => {

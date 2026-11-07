@@ -1,0 +1,20 @@
+{
+  "all": true,
+  "include": [
+    "src/**",
+    "ui/**",
+    "scripts/**",
+    "skills/screens/scripts/**",
+    "dist/ui/assets/*.js"
+  ],
+  "extension": [".mjs", ".js", ".jsx"],
+  "excludeAfterRemap": true,
+  "reporter": ["text", "html", "json", "json-summary"],
+  "check-coverage": true,
+  "per-file": true,
+  "lines": 100,
+  "statements": 100,
+  "functions": 100,
+  "branches": 100,
+  "exclude": ["node_modules/**", "test/**", "coverage/**"]
+}

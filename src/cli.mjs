@@ -98,7 +98,7 @@ async function main() {
     }
     const url = new URL(
       "/mcp",
-      o.url || process.env.SCREENS_URL || "http://127.0.0.1:4800",
+      o.url || process.env.SCREENS_URL,
     );
     if (
       !["127.0.0.1", "localhost"].includes(url.hostname) ||
