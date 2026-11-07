@@ -150,7 +150,8 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
     expect(initial.changedPixels).toBeGreaterThan(0);
     await page.getByLabel("View", { exact: true }).selectOption("overlay");
     await expect(page.getByRole("slider", { name: "Blend" })).toBeVisible();
-    await page.getByRole("slider", { name: "Blend" }).fill("65");
+    await page.getByRole("slider", { name: "Blend" }).press("ArrowRight");
+    await expect(page.getByRole("slider", { name: "Blend" })).toHaveValue("51");
     await page.getByLabel("View", { exact: true }).selectOption("side");
     await page.screenshot({
       path: info.outputPath("desktop-comparison.png"),
@@ -326,6 +327,24 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
       info.outputPath("workflow-proof.json"),
       JSON.stringify(proof, null, 2),
     );
+    // Export only deterministic fixture evidence for replay against the built
+    // production container. Never copy the user's registry or installed skills.
+    if (process.env.SCREENS_PROOF_EXPORT) {
+      const captures = [entry.captures.current, expected, bad, fresh].map((capture) => ({
+        ...capture,
+        imageBase64: store.image(capture.id).bytes.toString("base64"),
+      }));
+      writeFileSync(process.env.SCREENS_PROOF_EXPORT, JSON.stringify({
+        proof, captures, report,
+        evidence: {
+          kind: evidence.kind, method: evidence.method, outcome: evidence.outcome,
+          assertion: evidence.assertion, procedure: evidence.procedure,
+          observation: evidence.observation, author: evidence.author,
+          artifactType: "application/json",
+          artifactBase64: Buffer.from(JSON.stringify(report)).toString("base64"),
+        },
+      }, null, 2));
+    }
   } finally {
     await stop();
     rmSync(temp, { recursive: true, force: true });
