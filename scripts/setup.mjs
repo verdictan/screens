@@ -5,17 +5,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "n
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const options = { project: root, client: "all", runtime: "local" };
+const options = { runtime: "local" };
 const flags = new Set(["start", "skip-browser"]);
 for (let i = 2; i < process.argv.length; i++) {
   const name = process.argv[i];
   if (["--help", "-h"].includes(name)) {
-    console.log(`Install Screens and project agent workflows.
+    console.log(`Install Screens and agent workflows.
 
   node scripts/setup.mjs [options]
 
-  --project DIR       Application repository (default: Screens checkout)
-  --client LIST       all, both, or comma-separated agent names
+  --project DIR       Application repository (omit for user-wide setup)
+  --client LIST       auto, all, both, or agent names (user default: auto)
   --runtime TYPE      local or docker (default: local)
   --data DIR          Local registry directory
   --port NUMBER       Picker and MCP port (default: 4800)
@@ -42,7 +42,7 @@ No tests or capture recipes run during installation.`);
 }
 if (!["local", "docker"].includes(options.runtime))
   throw Error("Use --runtime local or --runtime docker");
-options.project = resolve(options.project);
+if (options.project) options.project = resolve(options.project);
 if (options.data) options.data = resolve(options.data);
 function run(command, args, extra = {}) {
   const result = spawnSync(command, args, { cwd: root, stdio: "inherit", ...extra });
@@ -60,7 +60,8 @@ function brewPrefix(formula) {
   return result.stdout.trim();
 }
 if (brew) {
-  run("brew", ["install", "verdictan/tap/screens"]);
+  const installed = spawnSync("brew", ["list", "--versions", "screens"], { stdio: "ignore" }).status === 0;
+  run("brew", [installed ? "upgrade" : "install", "verdictan/tap/screens"]);
   runtimeRoot = join(brewPrefix("screens"), "libexec/lib/node_modules/@verdictan/screens");
   runtimeNode = join(brewPrefix("node"), "bin/node");
   options.data = resolve(options.data || process.env.SCREENS_HOME || join(homedir(), ".local/share/verdictan-screens"));
@@ -76,13 +77,14 @@ const installArgs = [join(runtimeRoot, "scripts/install-skills.mjs")];
 for (const key of ["project", "client", "runtime", "data", "port", "replace"])
   if (options[key] !== undefined) installArgs.push(`--${key}`, options[key]);
 run(runtimeNode, installArgs);
-const helper = join(options.project, ".screens/scripts/screens.mjs");
+const connectionDirectory = options.project ? join(options.project, ".screens") : join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "screens");
+const helper = join(connectionDirectory, "scripts/screens.mjs");
 if (options.runtime === "docker" && !options.start) {
   run("docker", ["compose", "--project-directory", root, "-f", join(root, "compose.yaml"), "build"], {
     env: { ...process.env, ...(options.port ? { SCREENS_PORT: options.port } : {}) },
   });
 }
-console.log(`\nScreens is installed. Agent setup: ${join(options.project, ".screens/AGENTS.md")}`);
+console.log(`\nScreens is installed. Agent setup: ${connectionDirectory}`);
 if (brew) {
   const configDirectory = join(process.env.HOMEBREW_USER_CONFIG_HOME || join(homedir(), ".homebrew"), "services");
   mkdirSync(configDirectory, { recursive: true });

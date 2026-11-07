@@ -1,3 +1,15 @@
+# Agent workflows
+
+## User-wide setup
+
+Run `node scripts/install-skills.mjs` without `--project` to register Screens for detected agents. Detection uses executables on PATH or an existing MCP configuration. Use `--client NAME,NAME` to select agents explicitly; `--client all` includes all supported clients.
+
+User-wide support covers Claude Code, Codex, Cursor, GitHub Copilot CLI, Gemini CLI, and OpenCode v2. Each receives the Screens skill and a local stdio MCP registration. Generic clients receive the shared `~/.agents/skills/screens` skill and a connection file only. VS Code Copilot requires manual MCP registration using the generated connection settings.
+
+Connections live in `$XDG_CONFIG_HOME/screens` (default `~/.config/screens`). Re-running updates the Screens entries. Other configuration values remain; JSON comments remain, while Codex TOML is reserialized without comments. Agent approval policies are not changed. Restart agents after setup. No project is imported automatically.
+
+Pass `--project DIR` for the project-only workflow below, which generates MCP settings for manual registration.
+
 # AI agent setup
 
 Screens uses the same registry and service layer through Agent Skills, MCP, and

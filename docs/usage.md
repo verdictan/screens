@@ -25,7 +25,7 @@ This is an implementation starter, not a hosted multi-user service. Issue leases
 
 Use `bash install.sh` on macOS/Linux, `powershell -File install.ps1` on Windows,
 or `npm run setup` from the checkout. When Homebrew is available, local setup
-installs `verdictan/tap/screens`, connects the project to that package, and starts
+installs or upgrades `verdictan/tap/screens`, connects the selected agents, and starts
 it with `brew services start screens`. It applies `--data` and `--port` through
 your Homebrew service settings. Rerunning setup restarts the service with those settings.
 
@@ -207,3 +207,5 @@ database and `assets/`. Screenshots and databases are excluded from Git.
 
 See [architecture](architecture.md), [roadmap](roadmap.md) and
 [project setup](github-setup.md).
+
+Without `--project`, setup installs user-wide skills and MCP settings for detected agents. Pass `--project DIR` for project-only setup. Restart agents after installation.

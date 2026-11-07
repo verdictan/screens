@@ -31,14 +31,14 @@ screens serve
 Open [localhost:4800](http://127.0.0.1:4800). Keep the terminal open;
 press **Ctrl+C** to stop Screens. Your screenshots and comments remain saved.
 
-To connect your AI assistant to an app, run this in another terminal:
+To register Screens skills and MCP for detected user-wide AI agents, run:
 
 ```sh
-node "$(brew --prefix screens)/libexec/lib/node_modules/@verdictan/screens/scripts/install-skills.mjs" --project "/path/to/your-app"
+node "$(brew --prefix screens)/libexec/lib/node_modules/@verdictan/screens/scripts/install-skills.mjs"
 ```
 
-Replace `/path/to/your-app` with your app's folder, then restart your AI assistant
-in that project.
+Restart your AI agents afterward. Add `--project "/path/to/your-app"` for project-only setup.
+Use `--client claude,codex,cursor,copilot,gemini,opencode` to select clients explicitly.
 
 #### Run in the background
 
@@ -85,7 +85,7 @@ Install **Git** and either **Homebrew** or **Node.js 22.22.2+**, then run:
 ```sh
 git clone https://github.com/verdictan/screens.git
 cd screens
-bash install.sh --project "/path/to/your-app" --start
+bash install.sh --start
 ```
 
 Replace `/path/to/your-app` with your app's folder. With Homebrew, the script
