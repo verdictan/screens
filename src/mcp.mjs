@@ -1,5 +1,6 @@
 import { requireThat } from "./validation.mjs";
 import { createDiff } from "./diff.mjs";
+import { actionCatalog, runHeadless } from "./headless.mjs";
 import { mutate } from "./operations.mjs";
 const string = { type: "string" };
 const object = (properties, required = []) => ({
@@ -14,14 +15,20 @@ const json = (value) => ({
 
 export function mcpTools(store) {
   const tools = [
+    ["review_sets_list", "List ordered review sets for an immutable run.",
+      object({ run: string }, ["run"]), (a) => store.reviewSets(a.run)],
+    ["review_sets_save", "Create or edit an ordered review set. Entries are screen + | + JSON.stringify(variant) from runs_compare. Use expectedRevision 0 to create.",
+      object({ id: string, run: string, title: string, entries: { type: "array", items: string }, expectedRevision: { type: "integer" } }, ["run", "title", "entries", "expectedRevision"]),
+      (a) => store.saveReviewSet(a)],
     [
       "diffs_create",
-      "Measure pixel changes between exact captures. Masks are integer pixel rectangles; scores do not decide acceptance.",
+      "Measure pixel changes between exact captures. Region selects a normalized rectangle on both captures. Masks are integer pixel rectangles; scores do not decide acceptance.",
       object(
         {
           left: string,
           right: string,
           threshold: { type: "integer", minimum: 0, maximum: 255 },
+          region: object({ x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" } }, ["x", "y", "width", "height"]),
           masks: {
             type: "array",
             items: object(
@@ -43,7 +50,7 @@ export function mcpTools(store) {
       "diffs_view",
       "Read persisted diff measurements and the lossless artifact, when available.",
       object({ id: string }, ["id"]),
-      (a) => {
+      async (a) => {
         const value = store.getDiff(a.id),
           content = [{ type: "text", text: JSON.stringify(value) }];
         if (value.image) {
@@ -151,6 +158,7 @@ export function mcpTools(store) {
             viewport: string,
             locale: string,
             textScale: string,
+            browser: string,
           }),
         },
         ["screen", "role", "imageBase64", "revision", "fixture", "provenance"],
@@ -161,7 +169,7 @@ export function mcpTools(store) {
       "captures_view",
       "Return capture metadata and actual image content for visual inspection.",
       object({ id: string }, ["id"]),
-      (a) => {
+      async (a) => {
         const { capture, bytes } = store.image(a.id);
         requireThat(
           bytes.length <= 10 * 1024 * 1024,
@@ -236,17 +244,21 @@ export function mcpTools(store) {
     ],
   ];
   const mutations = {
-    diffs_create: "diff", evidence_add: "evidence", screens_register: "screen",
+    review_sets_save: "review-set", diffs_create: "diff", evidence_add: "evidence", screens_register: "screen",
     captures_register: "capture", reviews_add_note: "note", reviews_submit_fix: "note.submit",
   };
-  return tools.map(([name, description, inputSchema, call]) => {
+  const headless = actionCatalog().map(({ name, description, inputSchema }) => ({
+    name: name.replaceAll("-", "_"), description, inputSchema,
+    call: (input) => runHeadless(store, name, input),
+  }));
+  return [...tools.map(([name, description, inputSchema, call]) => {
     const operation = mutations[name];
     if (operation) inputSchema.properties.idempotencyKey = string;
     return {
       name, description, inputSchema,
       call: operation ? ({ idempotencyKey, ...input }) => mutate(store, operation, input, idempotencyKey) : call,
     };
-  });
+  }), ...headless];
 }
 
 export function protocol(store) {

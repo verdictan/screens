@@ -29,7 +29,7 @@ const captureOptions = (entry) =>
   ));
 const noteStatus = { open: "Open", "in-progress": "In progress", submitted: "Ready to review", verified: "Verified", "wont-fix": "Not planned" };
 
-export function Feedback({ entry, notes, pin, setPin, perform }) {
+export function Feedback({ entry, notes, pin, setPin, perform, onCompareArea }) {
   const waitForUndo = useUndo();
   const [pending, setPending] = useState(new Set());
   const [optimisticNotes, updateOptimistic] = useOptimistic(notes, (current, id) => current.map((note) => note.id === id ? { ...note, status: "open" } : note));
@@ -80,6 +80,7 @@ export function Feedback({ entry, notes, pin, setPin, perform }) {
         {note.region && <p className="note-area-context">Area comment · {Math.round(note.region.width * 100)}% × {Math.round(note.region.height * 100)}% of the screenshot</p>}
         {note.resolution && <div className="note-resolution"><h4>Resolution</h4><p>{note.resolution}</p></div>}
         <div className="note-actions">
+          {note.region && visible.has(note.capture) && <Button size="sm" variant="ghost" onClick={() => onCompareArea(note)}>Compare area</Button>}
           <a href={`/api/captures/${note.capture}/image`} target="_blank" rel="noopener">{visible.has(note.capture) ? "Original screenshot" : "Earlier screenshot"}<ArrowUpRight /></a>
           {note.evidence && <a href={`/api/captures/${note.evidence}/image`} target="_blank" rel="noopener">View fix<ArrowUpRight /></a>}
           {note.status === "submitted" && <Button size="sm" disabled={pending.has(note.id)} onClick={() => updateStatus(note, "verified")}><Check />Verify fix</Button>}

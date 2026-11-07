@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const options = { runtime: "local" };
-const flags = new Set(["start", "skip-browser"]);
+const flags = new Set(["start"]);
 for (let i = 2; i < process.argv.length; i++) {
   const name = process.argv[i];
   if (["--help", "-h"].includes(name)) {
@@ -16,22 +16,21 @@ for (let i = 2; i < process.argv.length; i++) {
 
   --project DIR       Application repository (omit for user-wide setup)
   --client LIST       auto, all, both, or agent names (user default: auto)
-  --runtime TYPE      local or docker (default: local)
   --data DIR          Local registry directory
   --port NUMBER       Picker and MCP port (default: 4800)
-  --start             Start the picker for source or Docker installs
-  --skip-browser      Omit the local Chromium download
+  --start             Start the picker for source installs
   --replace yes       Update existing Screens workflow files
 
 Clients: generic, claude, codex, cursor, copilot, gemini, opencode.
 Other agents can use the generated MCP settings or CLI guide.
 Local setup uses Homebrew and starts its service when brew is available.
-Otherwise, local setup requires Node 22.22.2+ and npm. Docker needs Compose.
+Otherwise, local setup requires Node 22.22.2+ and npm.
+Chromium, Firefox, WebKit, and their supported Linux libraries install with Screens.
 No tests or capture recipes run during installation.`);
     process.exit(0);
   }
   const key = name.slice(2);
-  if (!name.startsWith("--") || ![...flags, "project", "client", "runtime", "data", "port", "replace"].includes(key))
+  if (!name.startsWith("--") || ![...flags, "project", "client", "data", "port", "replace"].includes(key))
     throw Error(`Unknown option ${name}. Use --help.`);
   if (flags.has(key)) options[key] = true;
   else {
@@ -40,8 +39,6 @@ No tests or capture recipes run during installation.`);
     options[key] = process.argv[++i];
   }
 }
-if (!["local", "docker"].includes(options.runtime))
-  throw Error("Use --runtime local or --runtime docker");
 if (options.project) options.project = resolve(options.project);
 if (options.data) options.data = resolve(options.data);
 function run(command, args, extra = {}) {
@@ -49,7 +46,7 @@ function run(command, args, extra = {}) {
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status || 1);
 }
-const brew = options.runtime === "local" && process.platform !== "win32"
+const brew = process.platform !== "win32"
   && spawnSync("brew", ["--prefix"], { stdio: "ignore" }).status === 0;
 let runtimeRoot = root;
 let runtimeNode = process.execPath;
@@ -66,24 +63,18 @@ if (brew) {
   runtimeNode = join(brewPrefix("node"), "bin/node");
   options.data = resolve(options.data || process.env.SCREENS_HOME || join(homedir(), ".local/share/verdictan-screens"));
   options.port = String(options.port || process.env.SCREENS_PORT || process.env.PORT || 4800);
-} else if (options.runtime === "local") {
+} else {
   const windows = process.platform === "win32";
   run(windows ? "npm.cmd" : "npm", ["ci", "--include=dev"], { shell: windows });
   run(process.execPath, [join(root, "node_modules/vite/bin/vite.js"), "build"]);
 }
-if (options.runtime === "local" && !options["skip-browser"])
-  run(runtimeNode, [join(runtimeRoot, "node_modules/playwright/cli.js"), "install", "chromium"]);
+if (brew) run(runtimeNode, [join(runtimeRoot, "scripts/bundle-runtime.mjs")]);
 const installArgs = [join(runtimeRoot, "scripts/install-skills.mjs")];
 for (const key of ["project", "client", "runtime", "data", "port", "replace"])
   if (options[key] !== undefined) installArgs.push(`--${key}`, options[key]);
 run(runtimeNode, installArgs);
 const connectionDirectory = options.project ? join(options.project, ".screens") : join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "screens");
 const helper = join(connectionDirectory, "scripts/screens.mjs");
-if (options.runtime === "docker" && !options.start) {
-  run("docker", ["compose", "--project-directory", root, "-f", join(root, "compose.yaml"), "build"], {
-    env: { ...process.env, ...(options.port ? { SCREENS_PORT: options.port } : {}) },
-  });
-}
 console.log(`\nScreens is installed. Agent setup: ${connectionDirectory}`);
 if (brew) {
   const configDirectory = join(process.env.HOMEBREW_USER_CONFIG_HOME || join(homedir(), ".homebrew"), "services");

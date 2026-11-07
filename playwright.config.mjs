@@ -1,3 +1,4 @@
+import "./src/runtime.mjs";
 import { defineConfig } from "@playwright/test";
 const phase = process.env.SCREENS_PROOF_PHASE;
 if (phase && !["workflow", "deployment", "restart"].includes(phase))

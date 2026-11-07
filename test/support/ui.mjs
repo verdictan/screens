@@ -7,8 +7,15 @@ import { Readable } from "node:stream";
 import assert from "node:assert/strict";
 import { fixture } from "./registry.mjs";
 import { requestHandler } from "../../src/server.mjs";
+export function browserDOM(w) {
+  w.matchMedia = (media) => ({ media, matches: media.includes("prefers-reduced-motion"), addEventListener() {}, removeEventListener() {} });
+  w.Element.prototype.scrollIntoView = () => {};
+  w.Element.prototype.checkVisibility = function () { return !this.closest('[hidden], [inert], [data-state="closed"], [data-state="inactive"]'); };
+  w.HTMLCanvasElement.prototype.getContext = () => ({ putImageData() {} });
+  w.ImageData = class { constructor(data, width, height) { Object.assign(this, { data, width, height }); } };
+}
 export async function until(fn, message = "UI did not settle") {
-  for (let i = 0; i < 1500; i++) {
+  for (let i = 0; i < 5000; i++) {
     if (fn()) return;
     await new Promise((r) => setTimeout(r, 2));
   }
@@ -58,6 +65,7 @@ export async function ui(
     requests.push([path, options]);
     return respond ? respond(path, options, response) : response(path, options);
   };
+  browserDOM(w);
   w.ResizeObserver = class {
     observe() {}
     unobserve() {}

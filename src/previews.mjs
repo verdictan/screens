@@ -26,6 +26,6 @@ export async function preparePreview(store, bytes) {
 
 export async function prepareCaptures(store, captures) {
   for (const capture of captures) {
-    if (!capture.preview) await preparePreview(store, store.image(capture.id).bytes);
+    if (!capture.preview) { await preparePreview(store, store.image(capture.id).bytes); }
   }
 }

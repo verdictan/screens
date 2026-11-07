@@ -142,33 +142,34 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
     await expect(page.locator("#title")).toHaveText("Project overview");
     await expect(
       page.getByRole("img", {
-        name: "Project overview — PR result",
+        name: "Project overview — Update",
         exact: true,
       }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Measure selected pair" }).click();
+    await page.getByRole("button", { name: /Inspect pixel differences/ }).click();
+    await page.getByRole("button", { name: "Measure changes", exact: true }).click();
     await expect(page.locator("#diff-result")).toContainText("% changed");
     const initial = store.compare(captured.run.id).entries[0].measurements[0];
     expect(initial.changedPixels).toBeGreaterThan(0);
-    await page.getByLabel("View", { exact: true }).selectOption("overlay");
+    await page.getByText("Overlay", { exact: true }).click();
     await expect(page.getByRole("slider", { name: "Blend" })).toBeVisible();
     await page.getByRole("slider", { name: "Blend" }).press("ArrowRight");
-    await expect(page.getByRole("slider", { name: "Blend" })).toHaveValue("51");
-    await page.getByLabel("View", { exact: true }).selectOption("side");
+    await expect(page.getByRole("slider", { name: "Blend" })).toHaveAttribute("aria-valuenow", "51");
+    await page.getByText("Side by side", { exact: true }).click();
     await page.screenshot({
       path: info.outputPath("desktop-comparison.png"),
       fullPage: true,
     });
     const image = page.getByRole("img", {
-      name: "Project overview — PR result",
+      name: "Project overview — Update",
       exact: true,
     });
     await image.click({ position: { x: 40, y: 50 } });
     await page
-      .getByLabel("Feedback", { exact: true })
+      .getByLabel("What should change?", { exact: true })
       .fill("Restore the button width to the approved design.");
     await page
-      .getByRole("button", { name: "Add feedback", exact: true })
+      .getByRole("button", { name: "Add note", exact: true })
       .click();
     await expect(page.locator("#notes")).toContainText(
       "Restore the button width",
@@ -176,10 +177,10 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
     const note = store.getScreen("workflow-proof/overview").notes[0];
     expect(note.capture).toBe(bad.id);
     expect(note.point.x).toBeGreaterThan(0);
-    await page.getByRole("tab", { name: "Compare", exact: true }).click();
-    await page.getByRole("button", { name: "Approve this target" }).click();
+    await page.getByRole("tab", { name: "Review", exact: true }).click();
+    await page.getByRole("button", { name: "Approve design" }).click();
     await expect(
-      page.getByText("Target approved", { exact: true }),
+      page.getByText("This is the approved reference for this screen.", { exact: true }),
     ).toBeVisible();
     const conflict = await page.request.post(baseUrl + "/api/targets/approve", {
       data: { capture: expected.id, expectedRevision: 0 },
@@ -214,12 +215,13 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
     await page.goto(`${baseUrl}/?project=workflow-proof&run=${fixedRun.id}`);
     await page.getByRole("tab", { name: /Feedback/ }).click();
     await expect(
-      page.getByRole("link", { name: /Earlier capture/ }),
+      page.getByRole("link", { name: /Earlier screenshot/ }),
     ).toHaveAttribute("href", `/api/captures/${bad.id}/image`);
     await page.getByRole("button", { name: "Verify fix" }).click();
-    await expect(page.locator("#notes")).toContainText("verified");
-    await page.getByRole("tab", { name: "Compare", exact: true }).click();
-    await page.getByRole("button", { name: "Measure selected pair" }).click();
+    await expect(page.locator("#notes")).toContainText("Verified");
+    await page.getByRole("tab", { name: "Review", exact: true }).click();
+    await page.getByRole("button", { name: /Inspect pixel differences/ }).click();
+    await page.getByRole("button", { name: "Measure changes", exact: true }).click();
     await expect(page.locator("#diff-result")).toContainText("0.000% changed");
     const fixture = await page.context().newPage();
     await fixture.goto("file://" + source);
@@ -263,7 +265,7 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
         exact: true,
       }),
     ).toBeVisible();
-    await page.getByRole("tab", { name: "Compare", exact: true }).click();
+    await page.getByRole("tab", { name: "Review", exact: true }).click();
     for (const width of [912, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(page.locator("#title")).toBeVisible();
@@ -274,7 +276,7 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
       ).toBe(true);
       if (width === 912) {
         const boxes = await page
-          .locator("#comparison > section")
+          .locator("#comparison > figure")
           .evaluateAll((nodes) =>
             nodes.map((n) => {
               const r = n.getBoundingClientRect();
@@ -294,7 +296,7 @@ test("capture → skill load → compare → feedback → MCP fix → human veri
     await start();
     await page.reload();
     await page.getByRole("tab", { name: /Feedback/ }).click();
-    await expect(page.locator("#notes")).toContainText("verified");
+    await expect(page.locator("#notes")).toContainText("Verified");
     expect(store.getScreen("workflow-proof/overview").targets[0].capture).toBe(
       expected.id,
     );

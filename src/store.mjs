@@ -13,6 +13,10 @@ import {
   variant,
 } from "./validation.mjs";
 
+import { initializeAutomation } from "./automation.mjs";
+import { initializeEvidence } from "./evidence-tools.mjs";
+import { initializeStorage } from "./storage-tools.mjs";
+
 const now = () => new Date().toISOString();
 const parse = (row) => (row ? JSON.parse(row.data) : null);
 
@@ -22,7 +26,7 @@ export class Store {
     this.directory = directory;
     this.db = new DatabaseSync(join(directory, "screens.sqlite"));
     requireThat(
-      this.db.prepare("PRAGMA user_version").get().user_version <= 3,
+      this.db.prepare("PRAGMA user_version").get().user_version <= 5,
       "Registry was created by a newer Screens version",
       409,
     );
@@ -42,7 +46,11 @@ export class Store {
       CREATE INDEX IF NOT EXISTS notes_capture ON notes(capture);
       CREATE TABLE IF NOT EXISTS previews (hash TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS requests (key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, data TEXT NOT NULL);
-      PRAGMA user_version=3;`);
+      CREATE TABLE IF NOT EXISTS review_sets (id TEXT PRIMARY KEY, run TEXT NOT NULL REFERENCES runs(id), revision INTEGER NOT NULL, data TEXT NOT NULL);
+      PRAGMA user_version=5;`);
+    initializeEvidence(this);
+    initializeAutomation(this);
+    initializeStorage(this);
   }
   close() {
     this.db.close();
@@ -203,6 +211,9 @@ export class Store {
     };
   }
   capture(input) {
+    return this.transaction(() => this.writeCapture(input));
+  }
+  writeCapture(input) {
     this.getScreen(input.screen);
     const role = choice(
       input.role,
@@ -235,12 +246,7 @@ export class Store {
       this.db.prepare("SELECT data FROM captures WHERE id=?").get(id),
     );
     if (existing) return this.getCapture(id);
-    const path = join(this.directory, "assets", hash);
-    try {
-      writeFileSync(path, bytes, { flag: "wx", mode: 0o600 });
-    } catch (e) {
-      if (e.code !== "EEXIST") throw e;
-    }
+    this.saveAsset(hash, bytes);
     const value = {
       id,
       ...metadata,
@@ -322,6 +328,32 @@ export class Store {
     this.event("run.created", { run: value.id });
     return value;
   }
+  reviewSets(run) {
+    this.getRun(run);
+    return this.db.prepare("SELECT data FROM review_sets WHERE run=? ORDER BY rowid DESC").all(run).map(parse);
+  }
+  saveReviewSet(input) {
+    return this.transaction(() => {
+      const run = this.getRun(input.run);
+      const previous = input.id
+        ? parse(this.db.prepare("SELECT data FROM review_sets WHERE id=?").get(input.id))
+        : null;
+      requireThat(!input.id || previous?.run === run.id, "Review set not found", 404);
+      requireThat(input.expectedRevision === (previous?.revision ?? 0), "Review set changed. Reload before saving.", 409);
+      const available = new Set(this.compare(run.id).entries.map((entry) => `${entry.screen}|${JSON.stringify(entry.variant)}`));
+      requireThat(Array.isArray(input.entries) && input.entries.length > 0 && input.entries.every((entry) => available.has(entry)), "Select screens from this run");
+      const value = {
+        id: previous?.id ?? randomUUID(), run: run.id, project: run.project,
+        title: text(input.title, "review set title"), entries: [...new Set(input.entries)],
+        revision: (previous?.revision ?? 0) + 1,
+        createdAt: previous?.createdAt ?? now(), updatedAt: now(),
+      };
+      this.db.prepare("INSERT INTO review_sets VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,data=excluded.data")
+        .run(value.id, value.run, value.revision, JSON.stringify(value));
+      this.event("review-set.saved", { reviewSet: value.id, revision: value.revision });
+      return value;
+    });
+  }
   compare(runId) {
     const run = this.getRun(runId),
       groups = new Map();
@@ -401,6 +433,7 @@ export class Store {
     return result;
   }
   saveAsset(hash, bytes) {
+    requireThat(/^[a-f0-9]{64}$/.test(hash), "Invalid asset hash");
     try {
       writeFileSync(join(this.directory, "assets", hash), bytes, {
         flag: "wx",
@@ -411,6 +444,9 @@ export class Store {
     }
   }
   saveDiff(value, bytes) {
+    return this.transaction(() => this.writeDiff(value, bytes));
+  }
+  writeDiff(value, bytes) {
     if (bytes) this.saveAsset(value.image, bytes);
     this.db
       .prepare("INSERT OR IGNORE INTO diffs VALUES (?,?)")
@@ -517,10 +553,10 @@ export class Store {
       provenance: "reporter-supplied",
     };
     if (artifact) {
-      this.saveAsset(artifact.hash, bytes);
       value.artifact.url = `/api/evidence/${value.id}/artifact`;
     }
     this.transaction(() => {
+      if (artifact) this.saveAsset(artifact.hash, bytes);
       this.db
         .prepare("INSERT INTO evidence VALUES (?,?,?)")
         .run(value.id, capture.id, JSON.stringify(value));

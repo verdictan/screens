@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ui, until, seedReview } from "./support/ui.mjs";
-const ready = async (u) => until(() => u.$("#title"));
+const ready = async (u) => until(() => u.$('#review[aria-busy="false"] #title'));
 
 test("UI empty states, project and run switching, filtering and keyboard navigation", async (t) => {
   const u = await ui(t, {
@@ -24,17 +24,13 @@ test("UI empty states, project and run switching, filtering and keyboard navigat
   assert.ok(u.$(".library-collapsed"));
   await u.click("Show screen library");
   assert.equal(u.$(".library-collapsed"), null);
-  await u.click("Toggle screen library");
-  assert.ok(u.$(".library-open"));
-  await u.click("Toggle screen library");
-  assert.equal(u.$(".library-open"), null);
-  await u.change('[aria-label="Screen filter"]', "open");
-  assert.equal(u.$("#count").textContent, "1");
-  await u.change('[aria-label="Screen filter"]', "missing");
-  assert.equal(u.$("#count").textContent, "1");
-  await u.change('[aria-label="Screen filter"]', "all");
+  await u.click("Feedback");
+  assert.equal(u.all(".screen-item").length, 1);
+  await u.click("Missing");
+  assert.equal(u.all(".screen-item").length, 1);
+  await u.click("All");
   await u.change("#search", "no matching screen");
-  assert.match(u.$("#screens").textContent, /No screens match/);
+  assert.match(u.$("#screens").textContent, /No matching screens/);
   await u.change("#search", "");
   for (const key of ["ArrowRight", "ArrowLeft", "Escape", "ArrowLeft"]) {
     u.doc.body.dispatchEvent(
@@ -54,10 +50,10 @@ test("UI empty states, project and run switching, filtering and keyboard navigat
   await u.tab("History");
   assert.match(
     u.$("[data-state=active][role=tabpanel]").textContent,
-    /Immutable originals/,
+    /Screenshot history/,
   );
   await u.change('[aria-label="Project"]', "empty");
-  await until(() => u.doc.body.textContent.includes("Load your first project"));
+  await until(() => u.doc.body.textContent.includes("Add screenshots to Empty"));
   assert.equal(new URL(u.w.location.href).searchParams.has("run"), false);
 });
 test("UI errors show server messages and allow failed actions to be dismissed", async (t) => {
@@ -85,9 +81,9 @@ test("UI errors show server messages and allow failed actions to be dismissed", 
     respond: async () => ({ ok: true, json: async () => [] }),
   });
   await until(() =>
-    empty.doc.body.textContent.includes("Load your first project"),
+    empty.doc.body.textContent.includes("Add your first screenshots"),
   );
-  assert.match(empty.$("select").textContent, /No projects/);
+  assert.equal(empty.$("select"), null);
   const u = await ui(t, {
     seed: seedReview,
     respond: async (path, options, next) =>
@@ -96,7 +92,7 @@ test("UI errors show server messages and allow failed actions to be dismissed", 
         : next(path, options),
   });
   await ready(u);
-  await u.click("Approve this target");
+  await u.click("Approve design");
   await until(() => u.doc.body.textContent.includes("HTTP 409"));
   await u.click("Dismiss");
   assert.equal(u.doc.body.textContent.includes("HTTP 409"), false);
@@ -107,22 +103,24 @@ test("comparison views, image pins, dimension mismatch and image failures remain
   for (const img of u.all(".capture-image")) u.image(img);
   await until(() => u.doc.body.textContent.includes("200 × 200"));
   for (const img of u.all(".capture-image")) u.image(img);
-  await u.change("[aria-label=View]", "left");
-  assert.equal(u.all("#comparison > section").length, 1);
-  await u.change("[aria-label=View]", "right");
-  assert.equal(u.all("#comparison > section").length, 1);
-  await u.change("[aria-label=View]", "overlay");
+  await u.click("Single");
+  await u.change('[aria-label="Single screenshot"]', "left");
+  assert.equal(u.all("#comparison > figure").length, 1);
+  await u.change('[aria-label="Single screenshot"]', "right");
+  assert.equal(u.all("#comparison > figure").length, 1);
+  await u.click("Overlay");
   assert.ok(u.$("[aria-label=Blend]"));
   for (const img of u.all("#comparison img")) u.image(img);
-  await u.change("[aria-label=Blend]", 75);
-  assert.equal(u.all("#comparison img")[1].style.opacity, "0.75");
+  u.$("[aria-label=Blend]").dispatchEvent(new u.w.KeyboardEvent("keydown", { key: "End", bubbles: true }));
+  await until(() => u.$(".overlay-image").style.opacity === "1");
+  assert.equal(u.$(".overlay-image").style.opacity, "1");
   u.image(u.all("#comparison img")[1], 200, 201);
   await until(() =>
     u.doc.body.textContent.includes("Overlay requires equal pixel dimensions"),
   );
-  await u.click("Current / PR");
+  await u.change('[aria-label="Comparison pair"]', "current,pr");
   assert.equal(u.doc.body.textContent.includes("Overlay requires"), false);
-  const image = u.$(".capture-image");
+  const image = u.$("#comparison .capture-image");
   image.dispatchEvent(new u.w.Event("error"));
   await until(() => u.doc.body.textContent.includes("could not be loaded"));
   image.getBoundingClientRect = () => ({
@@ -134,20 +132,20 @@ test("comparison views, image pins, dimension mismatch and image failures remain
   image.dispatchEvent(
     new u.w.MouseEvent("click", { bubbles: true, clientX: 50, clientY: 100 }),
   );
-  await until(() => u.$("#note-form"));
-  assert.match(u.doc.body.textContent, /Pin at 25%, 50%/);
-  await u.click("Clear pin");
-  assert.match(u.doc.body.textContent, /Click an image/);
-  await u.tab("Compare");
-  await u.click("Current / PR");
-  await u.click("Feedback: Pinned feedback");
-  await until(() => u.$("#note-form"));
-  assert.match(u.doc.body.textContent, /Pin at/);
+  await until(() => u.doc.body.textContent.includes("Pinned at 25%, 50%"));
+  assert.match(u.doc.body.textContent, /Pinned at 25%, 50%/);
+  await u.click("Remove selection");
+  assert.equal(u.$(".pin-context"), null);
+  await u.tab("Review");
+  await u.change('[aria-label="Comparison pair"]', "current,pr");
+  await u.click("Open feedback 1: Pinned feedback");
+  await until(() => u.doc.activeElement.id.startsWith("note-"));
+  assert.equal(u.doc.activeElement.id.startsWith("note-"), true);
   await u.change("#note-text", "Pinned submission");
   u.submit("#note-form");
   await until(() => u.$("#notes").textContent.includes("Pinned submission"));
   await u.change("#note-capture", u.captures.pr.id);
-  assert.match(u.doc.body.textContent, /Click an image/);
+  assert.equal(u.$(".pin-context"), null);
 });
 test("comparison distinguishes missing, unknown, mismatched and changed captures", async (t) => {
   for (const roles of [
@@ -170,13 +168,13 @@ test("comparison distinguishes missing, unknown, mismatched and changed captures
     assert.ok(u.$("#note-capture").value);
     await u.tab("Evidence");
     assert.ok(u.$("#evidence-capture").value);
-    await u.tab("Compare");
-    await u.change("[aria-label=View]", "overlay");
+    await u.tab("Review");
+    await u.click("Overlay");
     assert.match(
       u.doc.body.textContent,
       roles.length === 1
-        ? /Comparison incomplete/
-        : /Fixture fidelity is unknown/,
+        ? /A screenshot is missing/
+        : /screenshot data source is unspecified/,
     );
   }
   for (const mode of ["mismatch", "changed", "dimensions"]) {
@@ -212,7 +210,7 @@ test("comparison distinguishes missing, unknown, mismatched and changed captures
     await ready(u);
     assert.match(
       u.doc.body.textContent,
-      mode === "mismatch" ? /Fixture mismatch/ : /Visual review required/,
+      mode === "mismatch" ? /different sample data/ : /Click to comment/,
     );
     if (mode === "dimensions")
       assert.match(u.$("#diff-result").textContent, /dimensions differ/);
@@ -231,13 +229,13 @@ test("pixel measurement tolerances, rectangle boundaries, clear and stale respon
   });
   await ready(u);
   await u.change("#diff-threshold", 5);
-  await u.click("Measure selected pair");
+  await u.click("Measure changes");
   assert.equal(u.$("#measure").disabled, true);
-  await u.click("Current / PR");
+  await u.change('[aria-label="Comparison pair"]', "current,pr");
   await finish();
   await until(() => !u.$("#measure").disabled);
   assert.match(u.$("#diff-result").textContent, /Not measured/);
-  await u.click("Measure selected pair");
+  await u.click("Measure changes");
   await finish();
   await until(() => u.$("#diff-result").textContent.includes("% changed"));
   for (const [field, value] of [
@@ -259,6 +257,7 @@ test("pixel measurement tolerances, rectangle boundaries, clear and stale respon
   assert.match(u.doc.body.textContent, /0, 0/);
   await u.click("Clear");
   assert.match(u.doc.body.textContent, /No excluded regions/);
+  await until(() => !u.button("Add region").disabled);
   for (let i = 0; i < 100; i++) await u.click("Add region");
   await u.click("Add region");
   await until(() => u.doc.body.textContent.includes("valid pixel rectangle"));
@@ -290,9 +289,9 @@ test("feedback submissions, verification, reopening and original capture links",
   await u.tab("Feedback");
   assert.equal(u.$("#notes").textContent.includes("Phone only"), false);
   await u.click("Verify fix");
-  await until(() => u.$("#notes").textContent.includes("verified"));
+  await until(() => u.$("#notes").textContent.includes("Verified"));
   await u.click("Reopen");
-  await until(() => u.$("#notes").textContent.includes("open"));
+  await until(() => u.store.getScreen("demo/home").notes.find((note) => note.text === "Pinned feedback").status === "open");
   await u.change("#note-text", "New feedback");
   u.submit("#note-form");
   await until(() => u.$("#notes").textContent.includes("New feedback"));
@@ -302,9 +301,9 @@ test("feedback submissions, verification, reopening and original capture links",
       .notes.filter((n) => n.text === "New feedback").length,
     1,
   );
-  await u.tab("Compare");
-  await u.click("Approve this target");
-  await until(() => u.doc.body.textContent.includes("Target approved"));
+  await u.tab("Review");
+  await u.click("Approve design");
+  await until(() => u.doc.body.textContent.includes("Design approved"));
 });
 test("evidence uploads persist reports and reject unsupported, oversized or unreadable files", async (t) => {
   const u = await ui(t, { seed: seedReview });
@@ -358,7 +357,7 @@ test("evidence uploads persist reports and reject unsupported, oversized or unre
   u.w.FileReader = Original;
 });
 
-test("review restores an approved target and displays optional legacy metadata", async (t) => {
+test("review updates the approved target when optional run metadata is absent", async (t) => {
   const u = await ui(t, {
     seed: async (f) => {
       const originalCapture = f.capture;
@@ -382,8 +381,8 @@ test("review restores an approved target and displays optional legacy metadata",
   });
   await ready(u);
   assert.match(u.doc.body.textContent, /200x200/);
-  assert.match(u.$(".screen-key").textContent, /01/);
-  await u.click("Approve this target");
-  await until(() => u.doc.body.textContent.includes("Target approved"));
+  assert.equal(u.$("#title").textContent, "Home");
+  await u.click("Approve design");
+  await until(() => u.doc.body.textContent.includes("Design approved"));
   assert.equal(u.store.getScreen("demo/home").targets[0].revision, 2);
 });

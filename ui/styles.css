@@ -78,6 +78,7 @@ a:focus-visible, button:focus-visible, [data-slot="collapsible-trigger"]:focus-v
   border-radius: 8px;
   box-shadow: none;
 }
+[data-slot="input"]:focus-visible, [data-slot="textarea"]:focus-visible, [data-slot="native-select"]:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
 [data-slot="input"], [data-slot="native-select"] { height: 38px; }
 [data-slot="textarea"] { min-height: 112px; resize: vertical; line-height: 1.6; }
 [data-slot="badge"] { font-size: 11px; }
@@ -504,3 +505,21 @@ button.capture-region:hover, button.capture-region:focus-visible { background: v
 @media (max-width: 540px) {
   .comparison-toolbar > [data-slot="native-select-wrapper"], .view-controls { width: 100%; }
 }
+
+.review-set-picker { padding: 8px 18px 12px; }
+.review-set-picker [data-slot="field-label"] { font-size: 12px; color: var(--color-muted-foreground); }
+.review-set-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.review-set-picker > .review-set-actions { justify-content: flex-start; margin-top: 4px; }
+.review-set-dialog { max-height: calc(100dvh - 48px); overflow-y: auto; }
+.review-set-order { display: grid; gap: 6px; max-height: 35dvh; overflow-y: auto; }
+.review-set-order li { display: flex; align-items: center; gap: 4px; }
+.review-set-order li > span { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.review-set-order button { flex-shrink: 0; }
+.annotation-tools > [data-slot="native-select-wrapper"] { width: auto; max-width: min(100%, 280px); }
+#comparison[hidden] { display: none; }
+.region-stage, .region-overlay { display: grid; place-items: center; padding: 20px; background: var(--surface); border-radius: 12px; min-height: 160px; }
+.region-preview { display: block; max-width: 100%; max-height: 55dvh; height: auto; overflow: hidden; }
+.region-overlay { position: relative; }
+.region-overlay > svg { grid-area: 1 / 1; }
+.region-preview-overlay { transition: opacity 100ms linear; }
+@media (prefers-reduced-motion: reduce) { .region-preview-overlay { transition: none; } }

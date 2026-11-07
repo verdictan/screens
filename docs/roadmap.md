@@ -1,41 +1,63 @@
 # Delivery roadmap
 
-## Milestone 1 — local registry and review foundation
+## Local registry and review
 
-Implemented: SQLite persistence, immutable image and run IDs, four manifest
-adapters, Current/Target/PR picker, comparison overlay, feedback, approval
-history, CLI, direct stdio MCP and HTTP MCP, client skill installer/packages,
-Docker Compose, pixel diffs/masks and capture-linked semantic evidence.
+Implemented: SQLite persistence, immutable capture and run IDs, manifest import,
+Current/Target/PR comparison, overlays, point and area feedback, review sets,
+approval history, CLI, MCP, pixel differences, and capture-linked evidence.
 
-Completed release checks: live HTTP integration, deterministic browser workflow,
-responsive layouts, and production-container restart persistence. See the
-[standalone proof](standalone-proof.md) for scope and evidence.
+Earlier release checks covered live HTTP integration, browser workflows,
+responsive layouts, and restart persistence. See the [standalone proof](standalone-proof.md)
+for the scope of that evidence. Those checks predate the latest headless and
+bundling changes.
 
-Remaining release checks: real Claude/Codex client sessions and live-account workflows.
+Remaining release checks include installed-package workflows, real agent-client
+sessions, and live-account behavior.
 
-## Milestone 2 — reproducible project loading and PR capture
+## Capture automation
 
-Implemented for browser projects: versioned configuration, isolated exact-commit
-capture, explicit execution, PR metadata and stale-head detection.
+Implemented for browser projects: explicit capture recipes, isolated exact-commit
+capture, profiles, browser/device/theme/locale matrices, managed Chromium, Firefox,
+and WebKit, repeatable fixtures, source-change selection, static route discovery, resumable local jobs,
+and exact merge-candidate capture. The Screens service processes authorized jobs
+and saved schedules without separate worker or scheduler services.
 
 Remaining:
+
 - Native capture adapters for Electron and iOS Simulator.
-- Native and web fixture consistency checks.
+- Native fixture adapters.
+- Route and state discovery beyond supported static routes and source patterns.
 
-## Milestone 3 — agent collaboration and coverage
+## Evidence and agent collaboration
 
-- Expiring issue claims and collision handling.
+Implemented: expiring task claims, paginated and scoped retrieval, local event
+streams, handoff packages, bundled English OCR, text reports, browser observations,
+accessibility results, source-linked feedback, and supplementary perceptual
+measurements. CI policies export machine-readable reports. Portable bundles
+retain exact capture and decision records.
+
+Remaining:
+
+- Additional bundled OCR language models.
 - Screen metadata revision updates and rename/move lineage.
-- Pagination and scoped retrieval for large screen libraries.
-- Broader route/state coverage discovery (registered screens with no captures are already reported).
-- Carry-forward feedback with explicit reconfirmation on changed screenshots.
-- Legacy note migration and exported review JSON.
-- Additional perceptual metrics and richer motion playback, preserving manual acceptance.
+- Carry-forward feedback with explicit reconfirmation on changed captures.
+- Legacy note migration.
+- Richer motion playback and additional perceptual algorithms.
 
-## Milestone 4 — shared hosting
+## Local installation and storage
 
-- Authenticated people and agent identities with project-scoped access.
-- Enforced reviewer-only approvals and signed capture provenance.
-- Remote asset uploads, object storage and retention policy.
-- Background job dispatch, audit views and CI integration.
+Implemented: local registry backups and restore, usage and integrity reports,
+retention plans, and managed Ed25519 signatures. Screens creates its signing key
+when first used. Git, Chromium, Firefox, WebKit, and the OCR runtime are managed
+by the Screens installation. The local product has no remote storage or worker service to set up.
+
+Remaining:
+
+- Installed-package release coverage across supported operating systems.
+- Additional installer recovery and upgrade scenarios.
 - Signed releases and registry distribution for client packages.
+
+The [headless guide](headless.md) documents the available commands. Implementation
+is separate from release verification. The latest headless and bundling changes
+have not been exercised by tests, builds, live captures, or browser checks during
+this implementation task.

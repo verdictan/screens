@@ -45,10 +45,10 @@ test("production container: compare, annotate, MCP fix, review, evidence and per
     const before = JSON.parse(readFileSync("test-results/deployment-proof.json", "utf8"));
     await page.goto(`${base}/?project=workflow-proof&run=${before.fixedRun}`);
     await expect(page.locator("#title")).toHaveText("Project overview");
-    await expect(page.getByText("Target approved", { exact: true })).toBeVisible();
+    await expect(page.getByText("This is the approved reference for this screen.", { exact: true })).toBeVisible();
     await page.getByRole("tab", { name: /Feedback/ }).click();
-    await expect(page.locator("#notes")).toContainText("verified");
-    await expect(page.getByRole("link", { name: /Earlier capture/ }))
+    await expect(page.locator("#notes")).toContainText("Verified");
+    await expect(page.getByRole("link", { name: /Earlier screenshot/ }))
       .toHaveAttribute("href", `/api/captures/${bad.id}/image`);
     const persisted = await detail();
     expect(persisted.notes.find((n) => n.id === before.note.id)).toEqual(before.note);
@@ -104,24 +104,25 @@ test("production container: compare, annotate, MCP fix, review, evidence and per
   });
   await page.goto(`${base}/?project=workflow-proof&run=${run.id}`);
   await expect(page.locator("#title")).toHaveText("Project overview");
-  const image = page.getByRole("img", { name: "Project overview — PR result", exact: true });
+  const image = page.getByRole("img", { name: "Project overview — Update", exact: true });
   await expect(image).toBeVisible();
   await expect.poll(() => image.evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Measure selected pair" }).click();
+  await page.getByRole("button", { name: /Inspect pixel differences/ }).click();
+    await page.getByRole("button", { name: "Measure changes", exact: true }).click();
   await expect(page.locator("#diff-result")).toContainText("% changed");
   const initialDiff = (await compare(run.id)).entries[0].measurements[0];
   expect(initialDiff.changedPixels).toBeGreaterThan(0);
   await page.screenshot({ path: info.outputPath("production-regression.png"), fullPage: true });
   await image.click({ position: { x: 40, y: 50 } });
-  await page.getByLabel("Feedback", { exact: true }).fill("Restore the button width to the approved design.");
-  await page.getByRole("button", { name: "Add feedback", exact: true }).click();
+  await page.getByLabel("What should change?", { exact: true }).fill("Restore the button width to the approved design.");
+  await page.getByRole("button", { name: "Add note", exact: true }).click();
   await expect(page.locator("#notes")).toContainText("Restore the button width");
   const note = (await detail()).notes[0];
   expect(note.capture).toBe(bad.id);
   expect(note.point.x).toBeGreaterThan(0);
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
-  await page.getByRole("button", { name: "Approve this target" }).click();
-  await expect(page.getByText("Target approved", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("button", { name: "Approve design" }).click();
+  await expect(page.getByText("This is the approved reference for this screen.", { exact: true })).toBeVisible();
   const conflict = await request.post(base + "/api/targets/approve", {
     data: { capture: target.id, expectedRevision: 0 },
   });
@@ -137,17 +138,18 @@ test("production container: compare, annotate, MCP fix, review, evidence and per
   });
   await page.goto(`${base}/?project=workflow-proof&run=${fixedRun.id}`);
   await page.getByRole("tab", { name: /Feedback/ }).click();
-  await expect(page.getByRole("link", { name: /Earlier capture/ }))
+  await expect(page.getByRole("link", { name: /Earlier screenshot/ }))
     .toHaveAttribute("href", `/api/captures/${bad.id}/image`);
   await page.getByRole("button", { name: "Verify fix" }).click();
-  await expect(page.locator("#notes")).toContainText("verified");
+  await expect(page.locator("#notes")).toContainText("Verified");
   const evidence = await call("evidence_add", { ...fixture.evidence, capture: fixed.id });
   expect(evidence.sourceRevision).toBe(fixture.proof.fixedSha);
   await page.reload();
   await page.getByRole("tab", { name: /Evidence/ }).click();
   await expect(page.getByText(fixture.evidence.assertion, { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
-  await page.getByRole("button", { name: "Measure selected pair" }).click();
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("button", { name: /Inspect pixel differences/ }).click();
+    await page.getByRole("button", { name: "Measure changes", exact: true }).click();
   await expect(page.locator("#diff-result")).toContainText("0.000% changed");
   const finalDiff = (await compare(fixedRun.id)).entries[0].measurements[0];
   expect(finalDiff.changedPixels).toBe(0);

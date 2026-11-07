@@ -65,28 +65,22 @@ test("Verdictan colors render on desktop and mobile with working focus and hover
       "background-color",
       "rgb(228, 214, 200)",
     );
-    await expect(page.locator(".capture-header").first()).toHaveCSS(
+    await expect(page.locator(".capture-stage").first()).toHaveCSS(
       "background-color",
-      "rgb(255, 253, 249)",
+      "rgb(243, 238, 232)",
     );
-    await expect(page.locator("[role=tab][data-state=active]")).toHaveCSS(
-      "border-bottom-color",
-      "rgb(154, 70, 0)",
-    );
+    expect(await page.locator("[role=tab][data-state=active]").evaluate((tab) => getComputedStyle(tab, "::after").backgroundColor)).toBe("rgb(154, 70, 0)");
     await page.getByRole("tab", { name: /Feedback/ }).click();
     const button = page.getByRole("button", {
-      name: "Add feedback",
+      name: "Add note",
       exact: true,
     });
     await expect(button).toHaveCSS("background-color", "rgb(154, 70, 0)");
     await button.hover();
     await expect(button).toHaveCSS("background-color", "rgb(124, 56, 0)");
-    await page.getByLabel("Feedback", { exact: true }).focus();
-    await expect(page.getByLabel("Feedback", { exact: true })).toBeFocused();
-    await expect(page.getByLabel("Feedback", { exact: true })).not.toHaveCSS(
-      "box-shadow",
-      "none",
-    );
+    await page.getByLabel("What should change?", { exact: true }).focus();
+    await expect(page.getByLabel("What should change?", { exact: true })).toBeFocused();
+    await expect(page.getByLabel("What should change?", { exact: true })).toHaveCSS("outline", "rgb(154, 70, 0) solid 2px");
     for (const width of [1440, 912, 760, 540, 390]) {
       await page.setViewportSize({ width, height: 900 });
       expect(
@@ -99,7 +93,7 @@ test("Verdictan colors render on desktop and mobile with working focus and hover
         "rgb(248, 247, 245)",
       );
     }
-    await page.getByRole("button", { name: "Toggle screen library" }).click();
+    await page.getByRole("button", { name: "Show screen library" }).click();
     await expect(page.locator(".screen-library")).toBeVisible();
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await expect(page.locator("body")).toHaveCSS(

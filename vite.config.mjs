@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/postcss";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-const devPort = Number(process.env.SCREENS_DEV_PORT || 5173);
+const devPort = Number(process.env.SCREENS_DEV_PORT || 5170);
 const apiOrigin = `http://127.0.0.1:${process.env.SCREENS_API_PORT || 4801}`;
 const proxy = () => ({
   target: apiOrigin,

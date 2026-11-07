@@ -19,10 +19,10 @@ export function AnnotationLayer({ capture, notes, pin, selecting, onSelect, onOp
   return <>
     {notes.map((note, i) => note.region && <button key={note.id} type="button" className="capture-region"
       style={bounds(note.region)} aria-label={`Open area comment ${i + 1}: ${note.text}`} title={note.text}
-      onClick={() => onOpen({ capture: capture.id, noteId: note.id })}><span>{i + 1}</span></button>)}
+      onClick={() => onOpen({ capture: capture.id, noteId: note.id, region: note.region, point: null })}><span>{i + 1}</span></button>)}
     {pin?.capture === capture.id && pin.region && <span className="capture-region is-draft" style={bounds(pin.region)} aria-hidden="true"><span>+</span></span>}
     {selecting && <div className="annotation-surface" role="button" tabIndex={0}
-      aria-label="Select an area for a comment. Drag to select, or press Enter to start, arrows to move, Shift and arrows to resize, Enter to confirm, Escape to cancel."
+      aria-label="Select an area to compare or comment. Drag to select, or press Enter to start, arrows to move, Shift and arrows to resize, Enter to confirm, Escape to cancel."
       onPointerDown={(event) => {
         if (event.button !== 0 || !event.isPrimary) return;
         event.preventDefault();

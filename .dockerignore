@@ -1,6 +1,9 @@
 **
 !package.json
 !package-lock.json
+!npm-shrinkwrap.json
+!Dockerfile
+!.dockerignore
 !src/
 !src/**
 !ui/
@@ -21,3 +24,5 @@
 !playwright.config.mjs
 !compose.yaml
 !README.md
+!docs/
+!docs/**

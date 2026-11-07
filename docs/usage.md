@@ -16,10 +16,12 @@ design targets, PR results and review feedback in one place.
 - Shared Agent Skills workflows, setup scripts, MCP connection settings and registry helper.
 - Lossless pixel diff artifacts, explicit masks, channel tolerance and provenance.
 - Capture-linked visual, behavior, accessibility and motion evidence with report attachments.
-- Docker Compose with persistent storage, health checks and loopback publishing.
 - GitHub PR metadata resolution with pinned head, base and merge-base SHAs.
 
-This is an implementation starter, not a hosted multi-user service. Issue leases, authentication and change-to-screen mapping are tracked in [the roadmap](roadmap.md).
+The [headless guide](headless.md) covers capture automation, agent task leases,
+change-to-screen mapping, evidence reports, backups, and local signing.
+These tools use the local registry. Hosted authentication remains on
+[the roadmap](roadmap.md).
 
 ## Install
 
@@ -29,18 +31,16 @@ installs or upgrades `verdictan/tap/screens`, connects the selected agents, and 
 it with `brew services start screens`. It applies `--data` and `--port` through
 your Homebrew service settings. Rerunning setup restarts the service with those settings.
 
-Without Homebrew, the installer needs Node 22.22.2+ and npm, builds the UI from
-source, and uses `--start` to start the picker. `install.sh` can install Node with
-Homebrew when Node is missing. Local setup downloads Chromium unless you pass
-`--skip-browser`. Explicit `--runtime docker` uses Docker Compose instead of
-Homebrew and builds the existing image with Chromium and its system dependencies.
-
-On Linux, local browser captures also require Chromium's system libraries. Install
-those with `npx playwright install-deps chromium` if they are not present, or use
-Docker mode. `--skip-browser` omits the local browser download for import-only use.
+Without Homebrew, the source installer needs Node 22.22.2+ and npm, builds the UI,
+and uses `--start` to start Screens. `install.sh` installs Node through Homebrew
+when available. Normal installation includes Git, package-local Chromium, Firefox, and WebKit,
+English OCR code and language data, and axe-core. Supported Linux installations
+also install the browsers' system libraries through the OS package manager; that
+installation step can require administrator rights. Users do not run a separate
+browser or OCR installer, and Docker is not required.
 
 Setup does not run tests. To update installed workflows after pulling source changes,
-rerun setup with `--replace yes` and the same project, runtime, data and port options.
+rerun setup with `--replace yes` and the same project, data and port options.
 Use the generated `.screens/scripts/screens.mjs` helper to preserve those settings
 when starting the picker or importing evidence.
 
@@ -53,8 +53,6 @@ SQLite warning on stderr. Sharp decodes raster images for pixel differences. The
 npm ci
 npm start
 ```
-
-Or run `docker compose up -d --build --wait`; see [Docker deployment](deployment.md) for importing into its persistent volume.
 
 Open <http://127.0.0.1:4800>. The default database is in
 `~/.local/share/verdictan-screens`; all commands accept `--data DIR` or
@@ -77,7 +75,8 @@ in an adjacent assets directory before importing. Missing files produce warnings
 
 ## Compare a PR
 
-Resolve metadata using an authenticated GitHub CLI:
+Screens reads PR metadata through the GitHub REST API. Set `GITHUB_TOKEN` for
+private repositories or authenticated API access; the GitHub CLI is not required:
 
 ```sh
 node src/cli.mjs pr-context verdictan/example 123 --output pr-context.json
@@ -88,7 +87,6 @@ viewports, fixture identity, preparation commands and a server command that uses
 Review these commands before permitting execution:
 
 ```sh
-npx playwright install chromium
 node src/cli.mjs capture-pr OWNER/REPO 123 --repo /path/to/project \
   --config /path/to/capture.json --output /path/to/new-evidence --execute yes
 ```
@@ -133,7 +131,10 @@ codex mcp add screens --url http://127.0.0.1:4800/mcp
 Available tools: `projects_list`, `screens_search`, `screens_get`,
 `screens_register`, `captures_register`, `captures_view`, `runs_list`,
 `runs_compare`, `reviews_add_note`, `reviews_submit_fix`, `diffs_create`,
-`diffs_view`, `evidence_add`, `evidence_list`.
+`diffs_view`, `evidence_add`, `evidence_list`, plus the headless actions exposed by
+`tools/list`. `screens headless-help` lists the action schemas and marks CLI-only
+operations. Commands that read arbitrary paths or execute project code remain
+outside MCP. Bundled OCR operates on registered captures through CLI or MCP.
 
 `captures_view` returns actual image content, capped at 10 MB per tool response.
 Larger images remain viewable in the picker. Agents can propose a fix with
@@ -149,8 +150,8 @@ Install into an application repository:
 npm run skills:install -- --project /absolute/application --client all
 ```
 
-Use `/screens load .` in Claude Code, or `$screens load .` in Codex. Add
-`--runtime docker` when using Compose. Existing skill folders are not overwritten.
+Use `/screens load .` in Claude Code, or `$screens load .` in Codex. Existing
+skill folders are not overwritten.
 See [agent skills](agent-skills.md) for packaging, shared data and MCP setup.
 
 ## Pixel and semantic evidence
@@ -184,7 +185,6 @@ scope, isolation, screenshots, traces and pass criteria.
 npm test
 npm run check
 npm run test:integration
-npx playwright install chromium
 npm run test:e2e
 ```
 
@@ -195,15 +195,18 @@ also required before treating the picker as release-ready.
 
 ## Data and boundaries
 
-The web server defaults to `127.0.0.1`. Compose binds inside the container on
-`0.0.0.0`, with only the host loopback port published. It validates Host and Origin, requires
+The web server defaults to `127.0.0.1`. It validates Host and Origin, requires
 JSON mutations and serves only known static files and registered image IDs.
 Do not expose v0.2 through a public proxy. There is no account authentication.
 Imports and agent-supplied content are displayed as text. SVG and HTML uploads
 are rejected. Raster validation checks signatures, not full decoding.
 
-Back up the entire data directory while all writers are stopped, including the
-database and `assets/`. Screenshots and databases are excluded from Git.
+Use `screens registry-backup --output NEW_DIRECTORY` for a consistent online
+snapshot of the database and its referenced assets. Restore with
+`screens registry-restore --source BACKUP_DIRECTORY --output NEW_DIRECTORY`.
+See [storage tools](storage-tools.md) for portable bundles, signatures, integrity
+reports, retention plans, and managed signing keys. Screenshots and databases are
+excluded from Git.
 
 See [architecture](architecture.md), [roadmap](roadmap.md) and
 [project setup](github-setup.md).

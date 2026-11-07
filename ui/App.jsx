@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "./components/ui/alert";
 import { CaptureImage } from "./components/CaptureImage";
 import { CommandMenu, collectActions } from "./components/CommandMenu";
 import { Review } from "./Review";
+import { ReviewSets } from "./components/ReviewSets";
 import { api, useResource, useDelayedLoading, refreshResources, entryKey } from "./lib/api";
 import { cn } from "./lib/utils";
 import { changeView, useSpring } from "./lib/motion";
@@ -32,6 +33,7 @@ export function App() {
   const params = new URLSearchParams(location.search);
   const [projectId, setProjectId] = useState(params.get("project") || "");
   const [runId, setRunId] = useState(params.get("run") || "");
+  const [setId, setSetId] = useState(params.get("set") || "");
   const [selected, setSelected] = useState(() => {
     try {
       return decodeURIComponent(location.hash.slice(1));
@@ -57,8 +59,14 @@ export function App() {
     chosenRun ? `/api/compare?run=${chosenRun.id}` : null,
   );
   const run = comparison.data;
+  const reviewSets = useResource(chosenRun ? `/api/review-sets?run=${encodeURIComponent(chosenRun.id)}` : null);
+  const activeSet = reviewSets.data?.find((set) => set.id === setId);
+  const setEntries = activeSet
+    ? activeSet.entries.map((key) => run?.entries.find((entry) => entryKey(entry) === key)).filter(Boolean)
+    : run?.entries || [];
+  const chooseSet = (id) => { setSetId(id); setSelected(""); setQuery(""); setFilter("all"); };
   const entry =
-    run?.entries.find((e) => entryKey(e) === selected) || run?.entries[0];
+    setEntries.find((e) => entryKey(e) === selected) || setEntries[0];
   const detail = useResource(
     entry ? `/api/screen?id=${encodeURIComponent(entry.screen)}` : null,
   );
@@ -70,9 +78,10 @@ export function App() {
     chosenRun
       ? u.searchParams.set("run", chosenRun.id)
       : u.searchParams.delete("run");
+    activeSet ? u.searchParams.set("set", activeSet.id) : u.searchParams.delete("set");
     u.hash = entry ? encodeURIComponent(entryKey(entry)) : "";
     history.replaceState(null, "", u);
-  }, [project?.id, chosenRun?.id, entry && entryKey(entry)]);
+  }, [project?.id, chosenRun?.id, activeSet?.id, entry && entryKey(entry)]);
   const perform = async (fn, success) => {
     try {
       await fn();
@@ -82,7 +91,7 @@ export function App() {
       setMessage(e.message);
     }
   };
-  const list = (run?.entries || [])
+  const list = setEntries
     .filter((e) =>
       `${e.title} ${e.screen} ${e.variant.device} ${e.state}`
         .toLowerCase()
@@ -102,7 +111,7 @@ export function App() {
     setMenu(false);
   };
   const index = list.findIndex(
-    (e) => entryKey(e) === entryKey(entry),
+    (e) => entry && entryKey(e) === entryKey(entry),
   );
   async function showPage(value) {
     await changeView(() => { setTab(value); setFocused(false); });
@@ -120,8 +129,9 @@ export function App() {
       { id: "focus", label: focused ? "Show review panel" : "Focus on screenshots", group: "Workspace", run: () => changeView(() => setFocused(!focused)) },
       { id: "refresh", label: "Refresh workspace", group: "Workspace", run: refresh },
       { id: "search", label: "Find a screen", group: "Workspace", shortcut: "/", run: () => { setCollapsed(false); setMenu(true); requestAnimationFrame(() => document.getElementById("search")?.focus()); } },
-      ...(projects.data || []).map((project) => ({ id: `project-${project.id}`, label: project.name, group: "Projects", run: () => changeView(() => { setProjectId(project.id); setRunId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }) })),
-      ...(runs.data || []).map((run) => ({ id: `run-${run.id}`, label: run.title, group: "Review runs", run: () => changeView(() => { setRunId(run.id); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }) })),
+      ...(projects.data || []).map((project) => ({ id: `project-${project.id}`, label: project.name, group: "Projects", run: () => changeView(() => { setProjectId(project.id); setRunId(""); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }) })),
+      ...(reviewSets.data || []).map((set) => ({ id: `set-${set.id}`, label: set.title, group: "Review sets", run: () => chooseSet(set.id) })),
+      ...(runs.data || []).map((run) => ({ id: `run-${run.id}`, label: run.title, group: "Review runs", run: () => changeView(() => { setRunId(run.id); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }) })),
       ...(allScreens.data || []).map((screen) => ({
         id: `screen-${screen.id}`, label: screen.title, group: `Screens · ${screen.project}`,
         run: () => perform(async () => {
@@ -132,7 +142,7 @@ export function App() {
           const run = runs.find((r) => detail.captures.some((c) => r.captureIds.includes(c.id)));
           if (!run) throw Error("This screen has no captures in a review run yet.");
           const capture = detail.captures.find((c) => run.captureIds.includes(c.id));
-          changeView(() => { setProjectId(screen.project); setRunId(run.id); setSelected(entryKey(capture)); setQuery(""); setFilter("all"); setTab("compare"); });
+          changeView(() => { setProjectId(screen.project); setRunId(run.id); setSetId(""); setSelected(entryKey(capture)); setQuery(""); setFilter("all"); setTab("compare"); });
         }),
       })),
     ];
@@ -141,7 +151,7 @@ export function App() {
   }
   useEffect(() => {
     if (commandOpen) openCommands();
-  }, [allScreens.data, projects.data, runs.data, detail.data]);
+  }, [allScreens.data, projects.data, runs.data, reviewSets.data, detail.data]);
   useEffect(() => {
     const onKey = (event) => {
       if (event.defaultPrevented || typing(event) || commandOpen || event.repeat || event.target.closest('[role="dialog"], [role="slider"]')) return;
@@ -165,7 +175,7 @@ export function App() {
     return () => document.removeEventListener("keydown", onKey);
   });
   const error =
-    projects.error || runs.error || comparison.error || detail.error || allScreens.error;
+    projects.error || runs.error || comparison.error || detail.error || allScreens.error || reviewSets.error;
   const loading = !error && (!projects.data || project && !runs.data || chosenRun && (!run || !detail.data));
   const skeletonVisible = useDelayedLoading(Boolean(loading), `${project?.id}|${chosenRun?.id}|${entry?.screen}`);
   const feedbackCount = (run?.entries || []).filter((screen) => screen.openNotes > 0).length;
@@ -173,11 +183,12 @@ export function App() {
   const setupRequest = "Use Screens to load this project's existing screenshots. Show me which screens still need screenshots.";
   const library = (
         <aside className={cn("screen-library", menu && "library-open")} inert={mobile ? !menu : collapsed} aria-label="Screen library">
-          <div className="library-heading"><h2>Library</h2><span id="count">{run?.entries.length || 0}</span></div>
+          <div className="library-heading"><h2>Library</h2><span id="count">{setEntries.length}</span></div>
           {chosenRun && <div className="run-selection"><NativeSelect className="run-picker" aria-label="Review run" value={chosenRun.id}
-            onChange={(event) => { const id = event.target.value; changeView(() => { setRunId(id); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
+            onChange={(event) => { const id = event.target.value; changeView(() => { setRunId(id); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
             {runs.data?.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.title}</NativeSelectOption>)}
           </NativeSelect></div>}
+          {run && <ReviewSets key={run.id} run={run} sets={reviewSets.data || []} active={activeSet} onSelect={chooseSet} />}
           <div className="library-search"><Search aria-hidden="true" /><Input id="search" aria-label="Find a screen" placeholder="Find a screen" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>/</kbd></div>
           <ToggleGroup className="library-filters" type="single" aria-label="Screen filter" value={filter} onValueChange={(value) => { if (value) setFilter(value); }}>
             {[["all", "All"], ["open", "Feedback"], ["missing", "Missing"]].map(([value, label]) => <ToggleGroupItem key={value} value={value}>{label}</ToggleGroupItem>)}
@@ -186,8 +197,8 @@ export function App() {
             {list.map((item, i) => {
               const preview = item.captures.pr || item.captures.current || item.captures.target;
               return <React.Fragment key={entryKey(item)}>
-                {(i === 0 || list[i - 1].group !== item.group) && <h3 className="library-group">{item.group}</h3>}
-                <a className="screen-item" href={`/?project=${encodeURIComponent(project.id)}&run=${chosenRun.id}#${encodeURIComponent(entryKey(item))}`} data-review-link
+                {(!activeSet && (i === 0 || list[i - 1].group !== item.group)) && <h3 className="library-group">{item.group}</h3>}
+                <a className="screen-item" href={`/?project=${encodeURIComponent(project.id)}&run=${chosenRun.id}${activeSet ? `&set=${encodeURIComponent(activeSet.id)}` : ""}#${encodeURIComponent(entryKey(item))}`} data-review-link
                   title={`${item.title} · ${item.variant.device} · ${item.variant.theme} · ${item.variant.locale} · ${item.variant.viewport}`}
                   aria-current={entryKey(item) === entryKey(entry) ? "page" : undefined}
                   onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); select(item); }}>
@@ -222,7 +233,7 @@ export function App() {
           </Button>
           <a href="/" data-review-link className="wordmark"><Layers aria-hidden="true" /><span>Screens</span></a>
           {projects.data?.length > 0 && <NativeSelect className="project-picker" aria-label="Project" value={project?.id || ""}
-            onChange={(event) => { const id = event.target.value; changeView(() => { setProjectId(id); setRunId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
+            onChange={(event) => { const id = event.target.value; changeView(() => { setProjectId(id); setRunId(""); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
             {projects.data.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
           </NativeSelect>}
         </div>

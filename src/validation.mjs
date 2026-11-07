@@ -59,7 +59,7 @@ export function raster(bytes) {
 }
 export function variant(value = {}) {
   const result = {};
-  for (const k of ["device", "theme", "viewport", "locale", "textScale"]) {
+  for (const k of ["device", "theme", "viewport", "locale", "textScale", "browser"]) {
     result[k] = text(
       value[k] ??
         {
@@ -68,6 +68,7 @@ export function variant(value = {}) {
           viewport: "unspecified",
           locale: "en",
           textScale: "default",
+          browser: "unspecified",
         }[k],
       k,
     );

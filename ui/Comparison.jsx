@@ -18,12 +18,15 @@ import { api, labels } from "@/lib/api";
 import { Field, FieldLabel } from "./components/ui/field";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { AnnotationLayer } from "./components/AnnotationLayer";
+import { RegionComparison } from "./components/RegionComparison";
 import { CaptureImage } from "./components/CaptureImage";
 import { changeView } from "./lib/motion";
 import { useUndo } from "./lib/undo";
-export function Comparison({ entry, detail, onPin, perform, loading = false, pin }) {
+export function Comparison({ entry, detail, onPin, perform, loading = false, pin, areaRequest }) {
   const waitForUndo = useUndo();
   const [selectingArea, setSelectingArea] = useState(false);
+  const [selectedArea, setSelectedArea] = useState(null);
+  const [comparingArea, setComparingArea] = useState(false);
   const [maskUndoPending, setMaskUndoPending] = useState(false);
   const [pair, setPair] = useState(
     entry.captures.pr
@@ -43,11 +46,31 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
     [result, setResult] = useState(null);
   const roles = pair.split(","),
     [left, right] = roles.map((r) => entry.captures[r]);
+  useEffect(() => {
+    if (!areaRequest) return;
+    const candidates = [pair, "current,target", "target,pr", "current,pr"];
+    const next = candidates.find((candidate) => {
+      const captures = candidate.split(",").map((role) => entry.captures[role]);
+      return captures.every(Boolean) && captures.some((capture) => capture.id === areaRequest.capture);
+    });
+    if (next) { setPair(next); setComparingArea(true); }
+    else { setComparingArea(false); setWarning("Add a second screenshot to compare this area."); }
+    setSelectedArea(areaRequest);
+    setSelectingArea(false);
+    setView("side");
+  }, [areaRequest]);
+  const region = comparingArea && [left?.id, right?.id].includes(selectedArea?.capture) ? selectedArea.region : null;
+  const areaNotes = detail.notes.filter((note) => note.region && [left?.id, right?.id].includes(note.capture));
+  function openAnnotation(value) {
+    if (value.region) setSelectedArea(value);
+    onPin(value);
+  }
   const requestKey = JSON.stringify({
       left: left?.id,
       right: right?.id,
       threshold,
       masks,
+      region,
     }),
     current = useRef(requestKey);
   current.current = requestKey;
@@ -64,12 +87,13 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
         d.left === left?.id &&
         d.right === right?.id &&
         d.threshold === threshold &&
-        JSON.stringify(d.masks) === JSON.stringify(masks),
+        JSON.stringify(d.masks) === JSON.stringify(masks) &&
+        JSON.stringify(d.region || null) === JSON.stringify(region),
     );
   useEffect(() => {
     if (view !== "overlay" || !left || !right) return;
-    const a = dimensions[left.id],
-      b = dimensions[right.id];
+    const a = dimensions[left.id] || left.preview,
+      b = dimensions[right.id] || right.preview;
     if (a && b && (a.width !== b.width || a.height !== b.height)) {
       setView("side");
       setWarning(
@@ -140,8 +164,8 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
                 />}
                 {!loading && <AnnotationLayer key={`${capture.id}-${view}-${selectingArea}`} capture={capture}
                   notes={detail.notes.filter((note) => note.capture === capture.id && (note.point || note.region))}
-                  pin={pin} selecting={selectingArea && view !== "overlay"} onCancel={() => setSelectingArea(false)}
-                  onOpen={onPin} onSelect={(value) => { setSelectingArea(false); onPin(value); }} />}
+                  pin={selectedArea || pin} selecting={selectingArea && view !== "overlay"} onCancel={() => setSelectingArea(false)}
+                  onOpen={openAnnotation} onSelect={(value) => { setSelectingArea(false); setSelectedArea(value); }} />}
                 {pin?.capture === capture.id && pin.point && <span className="capture-pin is-draft" aria-hidden="true" style={{ left: `${pin.point.x * 100}%`, top: `${pin.point.y * 100}%` }}>+</span>}
                 {detail.notes
                   .filter((n) => n.capture === capture.id && (n.point || n.region))
@@ -185,7 +209,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
                 <CollapsibleTrigger>Annotation comments</CollapsibleTrigger><CollapsibleContent>
                 <div className="capture-notes-list">
                   {detail.notes.filter((note) => note.capture === capture.id && (note.point || note.region)).map((note, i) => (
-                    <Button key={note.id} variant="ghost" size="sm" onClick={() => onPin({ capture: capture.id, point: note.point, noteId: note.id })}>
+                    <Button key={note.id} variant="ghost" size="sm" onClick={() => openAnnotation({ capture: capture.id, point: note.point, region: note.region, noteId: note.id })}>
                       {i + 1}. {note.text}
                     </Button>
                   ))}
@@ -198,10 +222,10 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
     );
   }
   return (
-    <div className="comparison">
+    <div id="comparison-area" className="comparison">
       <div className="comparison-toolbar">
         <NativeSelect className="pair-picker" aria-label="Comparison pair" value={pair}
-          onChange={(event) => { const value = event.target.value; changeView(() => { setPair(value); setWarning(""); }); }}>
+          onChange={(event) => { const value = event.target.value; changeView(() => { setPair(value); setWarning(""); setSelectedArea(null); setComparingArea(false); setSelectingArea(false); }); }}>
           <NativeSelectOption value="current,target">Current &amp; design</NativeSelectOption>
           <NativeSelectOption value="target,pr">Design &amp; update</NativeSelectOption>
           <NativeSelectOption value="current,pr">Current &amp; update</NativeSelectOption>
@@ -214,13 +238,30 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
       </div>
       <div className="annotation-tools">
         <Button variant={selectingArea ? "secondary" : "ghost"} size="sm" aria-pressed={selectingArea}
-          onClick={() => { if (view === "overlay") setView("side"); setSelectingArea(!selectingArea); }}><Scan />{selectingArea ? "Cancel selection" : "Select area"}</Button>
-        <span role="status">{selectingArea ? "Drag to select. Esc cancels." : ""}</span>
+          onClick={() => { if (view === "overlay") setView("side"); setComparingArea(false); setSelectingArea(!selectingArea); }}><Scan />{selectingArea ? "Cancel selection" : "Select area"}</Button>
+        {areaNotes.length > 0 && <NativeSelect className="area-note-picker" aria-label="Select an annotated area" value={selectedArea?.noteId || ""}
+          onChange={(event) => {
+            const note = areaNotes.find((note) => note.id === event.target.value);
+            if (note) { setSelectedArea({ capture: note.capture, region: note.region, noteId: note.id }); setSelectingArea(false); }
+          }}>
+          <NativeSelectOption value="">Use an area comment</NativeSelectOption>
+          {areaNotes.map((note) => <NativeSelectOption key={note.id} value={note.id}>{labels[Object.keys(entry.captures).find((role) => entry.captures[role].id === note.capture)]}: {note.text}</NativeSelectOption>)}
+        </NativeSelect>}
+        {selectedArea && <>
+          <Button variant="secondary" size="sm" disabled={!left || !right} aria-pressed={comparingArea} onClick={() => { setComparingArea(!comparingArea); setSelectingArea(false); }}>{comparingArea ? "Show full screenshots" : "Compare selected area"}</Button>
+          <Button variant="ghost" size="sm" onClick={() => onPin({ capture: selectedArea.capture, region: selectedArea.region, point: null })}>Comment on area</Button>
+          <Button variant="ghost" size="sm" onClick={() => { setSelectedArea(null); setComparingArea(false); }}>Clear area</Button>
+        </>}
+        <span role="status">{selectingArea ? "Drag to select, or focus the image and press Enter. Esc cancels." : region ? "Comparing the selected area only" : selectedArea ? "Area selected. Compare it or add a comment." : ""}</span>
       </div>
       {(view === "left" || view === "right") && <div className="comparison-adjustment"><Field ><FieldLabel htmlFor="single-screenshot">Show screenshot</FieldLabel><NativeSelect id="single-screenshot" aria-label="Single screenshot" value={view} onChange={(event) => { const value = event.target.value; changeView(() => setView(value)); }}><NativeSelectOption value="left">{labels[roles[0]]}</NativeSelectOption><NativeSelectOption value="right">{labels[roles[1]]}</NativeSelectOption></NativeSelect></Field></div>}
       {view === "overlay" && left && right && <div className="blend-control"><span>{labels[roles[0]]}</span><Slider aria-label="Blend" min={0} max={100} step={1} value={[blend]} onValueChange={([value]) => setBlend(value)} /><span>{labels[roles[1]]}</span><output>{blend}%</output></div>}
       {warning && <Alert className="notice" role="status"><AlertDescription>{warning}</AlertDescription></Alert>}
+      {region && left && right && <section aria-label="Selected area comparison">
+        <RegionComparison {...{ left, right, roles, region, dimensions, view, blend }} />
+      </section>}
       <div
+        hidden={Boolean(region)}
         id="comparison"
         className={
           view === "overlay" && left && right
@@ -251,7 +292,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
               Pixel differences
             </CardTitle>
             <CardDescription className="text-xs">
-              Measure changes between the two screenshots.
+              {region ? "Measure changes inside the selected area." : "Measure changes between the two screenshots."}
             </CardDescription>
           </div>
           <Button
@@ -269,6 +310,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
                     right: right.id,
                     threshold,
                     masks,
+                    ...(region ? { region } : {}),
                   });
                   if (current.current === key)
                     setResult({ key, diff: measured });
@@ -278,7 +320,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
               })
             }
           >
-            {busy ? "Measuring…" : "Measure changes"}
+            {busy ? "Measuring…" : region ? "Measure selected area" : "Measure changes"}
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -377,7 +419,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
           <div id="diff-result" aria-live="polite">
             {!diff ? (
               <p className="text-sm text-muted-foreground">
-                Not measured for this pair.
+                {region ? "Selected area has not been measured." : "Not measured for this pair."}
               </p>
             ) : (
               <div className="space-y-3">

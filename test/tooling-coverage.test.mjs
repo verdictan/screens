@@ -129,7 +129,7 @@ test("PR proof records measured pairs and refuses changed heads", async () => {
       env: {
         GITHUB_REPOSITORY: "owner/repo",
         SCREENS_PR_NUMBER: "1",
-        GH_TOKEN: "fixture-token",
+        GITHUB_TOKEN: "fixture-token",
       },
       mocks: {
         "../src/store.mjs": {
@@ -140,7 +140,7 @@ test("PR proof records measured pairs and refuses changed heads", async () => {
           },
         },
         "../src/capture.mjs": {
-          resolvePullRequest: () => ({
+          resolvePullRequest: async () => ({
             repository: "owner/repo",
             number: 1,
             head: mode === "changed" && lookups++ ? "new" : "head",

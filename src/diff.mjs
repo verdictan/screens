@@ -39,12 +39,20 @@ export async function prepareDiff(store, input) {
     return { x: m.x, y: m.y, width: m.width, height: m.height };
   });
   requireThat(masks.length <= 100, "At most 100 masks");
+  const region = input.region ? {
+    x: input.region.x, y: input.region.y, width: input.region.width, height: input.region.height,
+  } : null;
+  requireThat(!region || Object.values(region).every(Number.isFinite) &&
+    region.x >= 0 && region.y >= 0 && region.width > 0 && region.height > 0 &&
+    region.x + region.width <= 1 && region.y + region.height <= 1,
+    "Region must be a normalized rectangle inside the capture");
   const identity = {
     left: left.id,
     right: right.id,
     algorithm,
     threshold,
     masks,
+    ...(region ? { region } : {}),
   };
   const id = hash(JSON.stringify(identity));
   const existing = store.findDiff(id);
@@ -114,11 +122,18 @@ export async function prepareDiff(store, input) {
   for (const m of masks)
     for (let y = m.y; y < m.y + m.height; y++)
       ignored.fill(1, y * width + m.x, y * width + m.x + m.width);
-  const output = Buffer.alloc(width * height * 4);
+  const crop = region ? {
+    x: Math.floor(region.x * width), y: Math.floor(region.y * height),
+    right: Math.min(width, Math.ceil((region.x + region.width) * width)),
+    bottom: Math.min(height, Math.ceil((region.y + region.height) * height)),
+  } : { x: 0, y: 0, right: width, bottom: height };
+  const cropWidth = crop.right - crop.x, cropHeight = crop.bottom - crop.y;
+  const output = Buffer.alloc(cropWidth * cropHeight * 4);
   let changedPixels = 0,
     maskedPixels = 0;
-  for (let p = 0; p < width * height; p++) {
-    const i = p * 4;
+  for (let pixel = 0; pixel < cropWidth * cropHeight; pixel++) {
+    const p = (crop.y + Math.floor(pixel / cropWidth)) * width + crop.x + pixel % cropWidth;
+    const i = pixel * 4, source = p * 4;
     output[i + 3] = 255;
     if (ignored[p]) {
       maskedPixels++;
@@ -129,29 +144,30 @@ export async function prepareDiff(store, input) {
     }
     let delta = 0;
     for (let k = 0; k < 4; k++)
-      delta = Math.max(delta, Math.abs(a.data[i + k] - b.data[i + k]));
+      delta = Math.max(delta, Math.abs(a.data[source + k] - b.data[source + k]));
     if (delta > threshold) {
       changedPixels++;
       output[i] = 230;
       output[i + 1] = 30;
       output[i + 2] = 100;
     } else {
-      const grey = Math.round((b.data[i] + b.data[i + 1] + b.data[i + 2]) / 3);
+      const grey = Math.round((b.data[source] + b.data[source + 1] + b.data[source + 2]) / 3);
       output[i] =
         output[i + 1] =
         output[i + 2] =
           Math.round(210 + (grey * 45) / 255);
     }
   }
-  const comparedPixels = width * height - maskedPixels;
+  const comparedPixels = cropWidth * cropHeight - maskedPixels;
   requireThat(comparedPixels > 0, "Masks exclude every pixel");
-  const bytes = await sharp(output, { raw: { width, height, channels: 4 } })
+  const bytes = await sharp(output, { raw: { width: cropWidth, height: cropHeight, channels: 4 } })
     .png()
     .toBuffer();
   return {
     value: {
       ...value,
       status: "measured",
+      regionPixels: { x: crop.x, y: crop.y, width: cropWidth, height: cropHeight },
       changedPixels,
       comparedPixels,
       maskedPixels,

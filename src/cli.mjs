@@ -3,11 +3,12 @@ import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
-import { execFileSync } from "node:child_process";
 import { Store } from "./store.mjs";
+import { startAutomation } from "./automation.mjs";
 import { makeServer } from "./server.mjs";
 import { protocol } from "./mcp.mjs";
 import { discover, importManifest, combineRuns } from "./import.mjs";
+import { headlessActions, actionCatalog, runHeadless } from "./headless.mjs";
 import { createDiff } from "./diff.mjs";
 import {
   captureRevision,
@@ -28,10 +29,27 @@ function args(values) {
   }
   return { options, positionals };
 }
+function actionInput(command, o) {
+  const descriptor = headlessActions[command];
+  const input = o.input ? JSON.parse(readFileSync(resolve(o.input), "utf8")) : {};
+  for (const [flag, raw] of Object.entries(o)) {
+        if (["input", "data"].includes(flag)) continue;
+        const key = flag.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+        const property = descriptor.inputSchema.properties[key];
+        if (!property) throw Error(`Unknown option --${flag} for ${command}`);
+        if (["object", "array", "boolean"].includes(property.type) || Array.isArray(property.type)) input[key] = JSON.parse(raw);
+        else if (["number", "integer"].includes(property.type)) input[key] = Number(raw);
+        else input[key] = raw;
+      }
+  return input;
+}
 const print = (value) =>
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 const help = `Screens — central screen evidence and review
 
+  screens headless-help [ACTION]
+  screens ACTION --input FILE [--data DIR]
+  screens jobs-enqueue --repo PATH --config FILE --ref SHA --execute yes
   screens serve [--port 4800] [--data DIR] [--host 127.0.0.1]
   screens diff --left CAPTURE --right CAPTURE [--threshold 0] [--masks FILE]
   screens evidence add FILE
@@ -60,6 +78,10 @@ async function main() {
     command = p[0];
   if (!command || ["help", "-h"].includes(command))
     return process.stdout.write(help);
+  if (command === "headless-help") {
+    const actions = actionCatalog(true);
+    return print(p[1] ? actions.find((action) => action.name === p[1]) || { error: "Unknown action" } : actions);
+  }
   if (command === "mcp") {
     if (!o.url && !process.env.SCREENS_URL) {
       const store = new Store(
@@ -149,7 +171,7 @@ async function main() {
     return;
   }
   if (command === "pr-context") {
-    const context = resolvePullRequest(p[1], p[2]);
+    const context = await resolvePullRequest(p[1], p[2]);
     if (o.output)
       writeFileSync(
         resolve(o.output),
@@ -157,6 +179,10 @@ async function main() {
         { flag: "wx" },
       );
     return print(context);
+  }
+  if (command === "doctor") {
+    const directory = resolve(o.data || process.env.SCREENS_HOME || join(homedir(), ".local/share/verdictan-screens"));
+    return print(await headlessActions.doctor.run({ directory }, actionInput(command, o), { cli: true }));
   }
   const store = new Store(
     resolve(
@@ -167,7 +193,23 @@ async function main() {
   );
   let serving = false;
   try {
-    if (command === "serve") {
+    if (headlessActions[command]) {
+      const input = actionInput(command, o);
+      const controller = new AbortController();
+      const stop = () => controller.abort(Error("Stopped"));
+      process.once("SIGINT", stop); process.once("SIGTERM", stop);
+      const stream = ["jobs-watch", "events-watch", "capture-run", "capture-changed", "capture-repeatability", "capture-bisect", "capture-merge"].includes(command);
+      try {
+        const result = await runHeadless(store, command, input, { cli: true, signal: controller.signal,
+          emit: (event) => process.stdout.write(JSON.stringify(event) + "\n") });
+        if (stream) process.stdout.write(JSON.stringify({ type: "result", result }) + "\n");
+        else print(result);
+        if (Number.isInteger(result?.exitCode)) process.exitCode = result.exitCode;
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+        process.exitCode = 130;
+      } finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
+    } else if (command === "serve") {
       const port = Number(o.port || process.env.PORT || 4800);
       if (!Number.isInteger(port) || port < 0 || port > 65535)
         throw new Error("Invalid port");
@@ -175,24 +217,20 @@ async function main() {
       if (!["127.0.0.1", "0.0.0.0"].includes(host))
         throw new Error("Host must be 127.0.0.1 or 0.0.0.0 (container use)");
       const server = makeServer(store);
-      server.on("error", (e) => {
-        console.error(e.message);
-        store.close();
-        process.exitCode = 1;
+      let automation, stopping = false;
+      const stop = async (exitCode = 0) => {
+        if (stopping) return; stopping = true;
+        const closed = new Promise((done) => server.close(done));
+        await automation?.stop(); await closed;
+        store.close(); process.exitCode = exitCode;
+      };
+      server.on("error", (error) => { console.error(error.message); void stop(1); });
+      server.listen(port, host, () => {
+        automation = startAutomation(store, { runAction: (name, input) => runHeadless(store, name, input, { cli: true }) });
+        console.log(`Screens: http://127.0.0.1:${server.address().port}\nMCP: http://127.0.0.1:${server.address().port}/mcp`);
       });
-      server.listen(port, host, () =>
-        console.log(
-          `Screens: http://127.0.0.1:${server.address().port}\nMCP: http://127.0.0.1:${server.address().port}/mcp`,
-        ),
-      );
       serving = true;
-      for (const signal of ["SIGINT", "SIGTERM"])
-        process.once(signal, () =>
-          server.close(() => {
-            store.close();
-            process.exit(0);
-          }),
-        );
+      for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void stop(); });
     } else if (command === "capture") {
       print(await captureRevision(store, o));
     } else if (["capture-pr", "capture-refs"].includes(command)) {
@@ -202,7 +240,7 @@ async function main() {
           verifyPR: command === "capture-pr",
           context:
             command === "capture-pr"
-              ? resolvePullRequest(p[1], p[2])
+              ? await resolvePullRequest(p[1], p[2])
               : o.context
                 ? JSON.parse(readFileSync(resolve(o.context), "utf8"))
                 : undefined,
@@ -214,6 +252,7 @@ async function main() {
           left: o.left,
           right: o.right,
           threshold: o.threshold === undefined ? 0 : Number(o.threshold),
+          ...(o.region ? { region: JSON.parse(o.region) } : {}),
           masks: o.masks
             ? JSON.parse(readFileSync(resolve(o.masks), "utf8"))
             : [],

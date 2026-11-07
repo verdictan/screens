@@ -19,48 +19,40 @@ test("client selection covers every profile and rejects unknown names", () => {
   assert.deepEqual(selectClients("cursor,cursor"), ["cursor"]);
   assert.throws(() => selectClients("unknown"), /Unknown client/);
 });
-test("setup routes local, Windows and Docker installs and propagates command failures", async () => {
-  for (const [argv, platform] of [
-    [[], process.platform],
-    [
-      [
-        "--skip-browser",
-        "--data",
-        "registry",
-        "--port",
-        "4900",
-        "--replace",
-        "yes",
-        "--start",
-      ],
-      "win32",
-    ],
-    [["--runtime", "docker"], process.platform],
-    [["--runtime", "docker", "--port", "4900"], process.platform],
-    [["--runtime", "docker", "--port", "4901", "--start"], process.platform],
+test("setup installs the managed runtime through source or Homebrew", async (t) => {
+  for (const [platform, brew, installed] of [
+    ["darwin", false, false], ["win32", false, false],
+    ["darwin", true, false], ["darwin", true, true],
   ]) {
-    const calls = [];
+    const dir = temp(t), calls = [];
     const result = await moduleUnderTest("scripts/setup.mjs", {
-      argv,
+      argv: ["--project", join(dir, "app"), "--data", join(dir, "registry"), "--port", "4900", "--start"],
       platform,
+      env: { HOMEBREW_USER_CONFIG_HOME: join(dir, "brew-config") },
       mocks: {
         "node:child_process": {
-          spawnSync: (...a) => {
-            calls.push(a);
+          spawnSync: (command, args, options) => {
+            calls.push([command, args, options]);
+            if (command === "brew" && args[0] === "--prefix") return {
+              status: brew ? 0 : 1, stdout: join(dir, args[1] || "brew") + "\n",
+            };
+            if (command === "brew" && args[0] === "list") return { status: installed ? 0 : 1 };
             return { status: 0 };
           },
         },
       },
     });
     assert.equal(result.error, undefined);
-    assert.ok(calls.length >= 2);
     assert.match(result.logs.join("\n"), /Screens is installed/);
-    if (platform === "win32") assert.equal(calls[0][0], "npm.cmd");
-    if (argv.includes("docker"))
-      assert.equal(
-        calls.some((c) => c[0] === "npm"),
-        false,
-      );
+    if (brew) {
+      assert.ok(calls.some(([command, args]) => command === "brew" && args[0] === (installed ? "upgrade" : "install")));
+      assert.ok(calls.some(([, args]) => args[0].endsWith("bundle-runtime.mjs")));
+      assert.match(fs.readFileSync(join(dir, "brew-config/services/screens.env"), "utf8"), /PORT=4900/);
+      assert.ok(calls.some(([command, args]) => command === "brew" && args.join(" ") === "services start screens"));
+    } else {
+      assert.ok(calls.some(([command, args]) => command === (platform === "win32" ? "npm.cmd" : "npm") && args.join(" ") === "ci --include=dev"));
+      assert.ok(calls.some(([, args]) => args[0].endsWith("scripts/screens.mjs") && args[1] === "serve"));
+    }
   }
   for (const argv of [["--help"], ["-h"]]) {
     const r = await moduleUnderTest("scripts/setup.mjs", { argv });
@@ -72,7 +64,8 @@ test("setup routes local, Windows and Docker installs and propagates command fai
     ["--unknown"],
     ["--port"],
     ["--port", "--start"],
-    ["--runtime", "bad"],
+    ["--runtime", "docker"],
+    ["--skip-browser"],
   ]) {
     const r = await moduleUnderTest("scripts/setup.mjs", { argv });
     assert.match(r.error.message, /Unknown|needs a value|runtime/);
@@ -130,7 +123,6 @@ test("installer writes all client connections and preserves existing project ins
   r = await run(["--project", project, "--replace", "yes"]);
   assert.equal(r.error, undefined);
   for (const argv of [
-    [],
     ["project"],
     ["--project"],
     ["--project", project, "--runtime", "bad"],

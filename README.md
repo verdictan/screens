@@ -28,6 +28,10 @@ brew install verdictan/tap/screens
 screens serve
 ```
 
+Screens includes Git, Chromium, Firefox, WebKit, English OCR, and accessibility scanning.
+No Docker, cloud account, or separate OCR/browser setup is needed. The installer
+handles browser system libraries on supported Linux systems.
+
 Open [localhost:4800](http://127.0.0.1:4800). Keep the terminal open;
 press **Ctrl+C** to stop Screens. Your screenshots and comments remain saved.
 
@@ -88,8 +92,7 @@ cd screens
 bash install.sh --start
 ```
 
-Replace `/path/to/your-app` with your app's folder. With Homebrew, the script
-installs the package and starts its background service automatically. Otherwise,
+With Homebrew, the script installs the package and starts its background service automatically. Otherwise,
 it builds from source; keep the terminal open while Screens runs. On Windows,
 use `powershell -File install.ps1 --project "/path/to/your-app" --start`.
 Open [localhost:4800](http://127.0.0.1:4800) and restart your AI assistant in your
@@ -121,16 +124,52 @@ Use different ports for the UI and API. Both servers bind to this computer only.
 3. **Ask your assistant** to fix the issue and add a new screenshot.
 4. **Review the result** and accept it when you are satisfied.
 
+### Review a flow
+
+Choose **New set** in the library, name the flow, and add screens from the current
+run. Move screens up or down to set their order, then save. Select the set to
+review it with the previous and next controls. **Edit set** changes its name,
+screens, or order. The page link includes the selected set.
+
+### Compare an area
+
+Choose **Select area** and drag over a screenshot. Choose **Compare selected
+area** to see both crops, then expand **Inspect pixel differences** and choose
+**Measure selected area**. Only pixels inside that region count. Pixel measurement
+requires equal image dimensions; screenshots are never resized to force a match.
+
+Use **Comment on area** to attach feedback, or **Use an area comment** to select
+an existing annotation. Keyboard users can focus the selection surface, press
+Enter, move with arrow keys, resize with Shift and arrows, and press Enter again.
+Choose **Show full screenshots** to leave the cropped view.
+
 Screens keeps earlier screenshots and their comments. Setup does not take
 screenshots automatically; ask your assistant to prepare any that are missing.
+
+## Use Screens without the UI
+
+```sh
+screens headless-help
+screens capture-plan --config capture.json
+screens tasks-list --project PROJECT_ID
+screens storage-report
+```
+
+Capture jobs, agent task claims, CI reports, portable review bundles, backups,
+and signing work through the CLI. Screens runs queued jobs and enabled schedules
+while its server is running. Registry operations are also available
+through MCP and the local HTTP API. See the [headless feature guide](docs/headless.md)
+for the included commands and configuration.
 
 ## More help
 
 - [Setup, imports, and commands](docs/usage.md)
 - [Connect your AI assistant](docs/agent-skills.md)
-- [Run with Docker](docs/deployment.md)
 - [Review evidence](docs/evidence.md)
 - [Tests and coverage](docs/testing.md)
 - [Planned features](docs/roadmap.md)
+
+The optional [Docker distribution](docs/deployment.md) includes the same features
+and managed runtimes as the Homebrew package.
 
 Screens runs on your computer and has no account sign-in. Keep it local.

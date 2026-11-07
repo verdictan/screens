@@ -4,12 +4,18 @@ Run the complete test suite from the Screens folder:
 
 ```sh
 npm ci
-npx playwright install chromium
 npm run test:all
 ```
 
-On Linux, Chromium may also need system libraries. Install them with
-`npx playwright install-deps chromium`.
+Installation supplies the package-local Chromium, Firefox, and WebKit engines,
+including their required system libraries on supported Linux systems.
+
+To run the integration checks, including the managed three-browser capture job,
+OCR, signing, backups, and local scheduling:
+
+```sh
+npm run test:integration
+```
 
 To run coverage and browser tests without the separate syntax check:
 

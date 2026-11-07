@@ -1,4 +1,5 @@
 import test from "node:test";
+import { browserDOM } from "./support/ui.mjs";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { Script } from "node:vm";
@@ -80,6 +81,7 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
       json: async () => JSON.parse(res.body),
     };
   };
+  browserDOM(dom.window);
   dom.window.ResizeObserver = class {
     observe() {}
     unobserve() {}
@@ -112,7 +114,7 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
     node.click();
     await until(() => node.dataset.state === "active");
   };
-  await until(() => $("title"));
+  await until(() => $("review")?.getAttribute("aria-busy") === "false");
   assert.equal($("title").textContent, "Home");
   assert.equal($("review").hidden, false);
   $("measure").click();
@@ -134,20 +136,20 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
     $("evidence-list").textContent.includes("Escape closes dialog"),
   );
   assert.match($("evidence-list").textContent, /Reported pass/);
-  assert.match($("evidence-list").textContent, /not been assessed/);
+  assert.match(dom.window.document.body.textContent, /does not approve a design/);
   await tab("Feedback");
   $("note-capture").value = pr.id;
   $("note-text").value = "Align title";
   submit("note-form");
   await until(() => $("notes").textContent.includes("Align title"));
-  await tab("Compare");
+  await tab("Review");
   $("approve").click();
   await until(() => !$("approve"));
   assert.equal(store.getScreen("ui/home").targets[0].capture, target.id);
   $("next").click();
   await until(() => $("title").textContent === "Missing");
   assert.equal($("measure").disabled, true);
-  assert.match($("comparison").textContent, /No current capture/);
+  assert.match($("comparison").textContent, /No current screenshot/);
   $("previous").click();
   await until(() => $("title").textContent === "Home");
   assert.match($("diff-result").textContent, /100.000% changed/);
@@ -156,6 +158,6 @@ test("picker navigation, persisted diff, masks, evidence, feedback and approval 
     "value",
   ).set.call($("search"), "Missing");
   $("search").dispatchEvent(event("input"));
-  await until(() => $("screens").querySelectorAll("button").length === 1);
+  await until(() => $("screens").querySelectorAll(".screen-item").length === 1);
   assert.equal(store.listEvidence({ screen: "ui/home" }).length, 1);
 });

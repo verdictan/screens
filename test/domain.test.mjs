@@ -50,6 +50,7 @@ test("validation accepts boundaries and rejects malformed input", async (t) => {
       viewport: "1x1",
       locale: "es",
       textScale: "large",
+      browser: "chromium",
     }),
     {
       device: "phone",
@@ -57,6 +58,7 @@ test("validation accepts boundaries and rejects malformed input", async (t) => {
       viewport: "1x1",
       locale: "es",
       textScale: "large",
+      browser: "chromium",
     },
   );
 });
@@ -147,7 +149,7 @@ test("registry errors leave stored captures and revisions intact", async (t) => 
   writeFileSync(assets, "not a directory");
   try {
     assert.throws(() => capture({ revision: "disk-failure" }), /ENOTDIR/);
-    assert.throws(() => store.saveAsset("other", bytes), /ENOTDIR/);
+    assert.throws(() => store.saveAsset("a".repeat(64), bytes), /ENOTDIR/);
   } finally {
     rmSync(assets);
     renameSync(assets + "-saved", assets);
@@ -155,7 +157,7 @@ test("registry errors leave stored captures and revisions intact", async (t) => 
   const future = join(dir, "future");
   mkdirSync(future);
   const db = new DatabaseSync(join(future, "screens.sqlite"));
-  db.exec("PRAGMA user_version=3");
+  db.exec("PRAGMA user_version=999");
   db.close();
   assert.throws(() => new Store(future), /newer Screens/);
 });

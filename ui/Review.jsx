@@ -14,6 +14,7 @@ export function Review({ run, entry, detail, perform, previous, next, position, 
   const inspector = useRef(null);
   const [approving, setApproving] = useState(false);
   const [pin, setPin] = useState(null);
+  const [areaRequest, setAreaRequest] = useState(null);
   const sameIds = new Set(detail.captures.filter((capture) => JSON.stringify(capture.variant) === JSON.stringify(entry.variant)).map((capture) => capture.id));
   const notes = detail.notes.filter((note) => sameIds.has(note.capture));
   const exactIds = new Set(Object.values(entry.captures).map((capture) => capture.id));
@@ -24,6 +25,7 @@ export function Review({ run, entry, detail, perform, previous, next, position, 
     `Missing screenshots: ${run.uncoveredScreens.map((screen) => screen.title).join(", ")}`,
   ] : [])];
   async function openFeedback(value) {
+    setFocused(false);
     if (value && !value.noteId) setPin(value);
     await setTab("feedback");
     requestAnimationFrame(() => {
@@ -32,6 +34,10 @@ export function Review({ run, entry, detail, perform, previous, next, position, 
       if (value?.noteId) target?.scrollIntoView({ block: "nearest" });
       else if (matchMedia("(max-width: 1100px)").matches) inspector.current?.scrollIntoView({ block: "start" });
     });
+  }
+  function compareArea(note) {
+    setAreaRequest({ capture: note.capture, region: note.region, noteId: note.id });
+    document.getElementById("comparison-area")?.scrollIntoView({ block: "start" });
   }
   async function approve() {
     await perform(async () => {
@@ -72,7 +78,7 @@ export function Review({ run, entry, detail, perform, previous, next, position, 
       </Button>
       <div className="review-layout">
         <section className="review-canvas" aria-label="Screen comparison" data-page="compare">
-          <Comparison {...{ entry, detail, perform, loading, pin }} onPin={openFeedback} />
+          <Comparison {...{ entry, detail, perform, loading, pin, areaRequest }} onPin={openFeedback} />
           {warnings.length > 0 && <Collapsible className="evidence-notice"><CollapsibleTrigger>{warnings.length} {warnings.length === 1 ? "capture notice" : "capture notices"}</CollapsibleTrigger><CollapsibleContent><div>{warnings.map((warning, i) => <p key={i}>{warning}</p>)}</div></CollapsibleContent></Collapsible>}
         </section>
         <aside id="review-panel" ref={inspector} className="review-inspector" aria-label="Review panel" hidden={focused} inert={focused}>
@@ -105,7 +111,7 @@ export function Review({ run, entry, detail, perform, previous, next, position, 
                 <p className="review-footnote">Approving a design does not verify a fix.</p>
               </div>
             </TabsContent>
-            <TabsContent value="feedback" inert={tab !== "feedback"}><Feedback {...{ entry, notes, pin, setPin, perform }} /></TabsContent>
+            <TabsContent value="feedback" inert={tab !== "feedback"}><Feedback {...{ entry, notes, pin, setPin, perform }} onCompareArea={compareArea} /></TabsContent>
             <TabsContent value="evidence" inert={tab !== "evidence"}><Evidence {...{ entry, evidence, perform }} /></TabsContent>
             <TabsContent value="history" inert={tab !== "history"}><History detail={detail} /></TabsContent>
           </Tabs>

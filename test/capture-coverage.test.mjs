@@ -53,8 +53,8 @@ test("capture configuration validates identities, commands, routes and variants"
     { variants: [...baseConfig().variants, ...baseConfig().variants] },
   ])
     assert.throws(() => check({ ...baseConfig(), ...patch }));
-  assert.throws(() => resolvePullRequest("bad", "1"), /OWNER/);
-  assert.throws(() => resolvePullRequest("owner/repo", 0), /number/);
+  await assert.rejects(resolvePullRequest("bad", "1"), /OWNER/);
+  await assert.rejects(resolvePullRequest("owner/repo", 0), /number/);
   await assert.rejects(captureRevision({}, {}), /executes project commands/);
 });
 async function captureFixture(
@@ -68,32 +68,10 @@ async function captureFixture(
   fs.writeFileSync(file, JSON.stringify(config));
   const calls = [],
     children = new Map();
-  let pid = 100000,
-    gitCalls = 0;
-  const command = (name, args) => {
-    calls.push([name, args]);
-    if (name === "gh")
-      return JSON.stringify(
-        args[1].includes("/compare/")
-          ? { merge_base_commit: { sha: "base" } }
-          : {
-              html_url: "https://example.invalid/pr/1",
-              title: "Test",
-              base: { sha: "base" },
-              head: {
-                sha: mode === "changed" ? "changed" : "head",
-                repo:
-                  mode === "no-head-repo" ? null : { full_name: "owner/repo" },
-              },
-            },
-      );
-    if (args[0] === "clone") {
-      fs.mkdirSync(args.at(-1));
-      return "";
-    }
-    if (args.includes("rev-parse"))
-      return args.at(-1).replace(/\^\{commit\}$/, "");
-    return "";
+  let pid = 100000;
+  const gitOutput = (cwd, args) => {
+    calls.push(["git", args]);
+    return args.includes("rev-parse") ? args.at(-1).replace(/\^\{commit\}$/, "") : "";
   };
   const finish = (child, code = 0, signal = null) => {
     child.exitCode = code;
@@ -115,7 +93,10 @@ async function captureFixture(
     queueMicrotask(() => {
       child.stdout.emit("data", Buffer.from("stdout"));
       child.stderr.emit("data", Buffer.from("stderr"));
-      if (cmd === "prepare") {
+      if (cmd === "bundled-git") {
+        if (args[0] === "clone") fs.mkdirSync(args.at(-1));
+        finish(child);
+      } else if (cmd === "prepare") {
         if (mode === "prepare-fails") finish(child, 2);
         else if (mode === "prepare-spawn-error") {
           child.pid = undefined;
@@ -146,7 +127,8 @@ async function captureFixture(
           locator: (selector) => ({
             waitFor: async () => calls.push(["ready", selector]),
           }),
-          evaluate: async (fn) => fn(),
+          addInitScript: async () => {},
+          evaluate: async (fn, input) => fn(input),
           screenshot: async (options) => {
             fs.writeFileSync(options.path, bytes);
             return bytes;
@@ -157,7 +139,15 @@ async function captureFixture(
   };
   const globals = {
     document: { fonts: { ready: Promise.resolve() } },
-    fetch: async () => {
+    fetch: async (url) => {
+      if (url.startsWith("https://api.github.com/")) return {
+        ok: true,
+        json: async () => url.includes("/compare/")
+          ? { merge_base_commit: { sha: "base" } }
+          : { html_url: "https://example.invalid/pr/1", title: "Test", base: { sha: "base" },
+              head: { sha: mode === "changed" ? "changed" : "head",
+                repo: mode === "no-head-repo" ? null : { full_name: "owner/repo" } } },
+      };
       fetchCalls++;
       if (mode === "timeout") return { ok: false };
       if (fetchCalls === 1) throw Error("starting");
@@ -174,14 +164,20 @@ async function captureFixture(
     platform,
     globals,
     mocks: {
-      "node:child_process": { execFileSync: command, spawn },
-      playwright: {
-        chromium: {
+      "node:child_process": { spawn },
+      "./evidence-tools.mjs": {
+        startBrowserEvidence: () => ({ reset() {}, collect: async () => ({}), dispose() {} }),
+        attachBrowserEvidence: async () => {},
+      },
+      "./runtime.mjs": {
+        bundledGit: { gitLocation: "bundled-git", env: {} },
+        gitOutput,
+        captureBrowser: async () => ({
           launch: async () => {
             if (mode === "browser-fails") throw Error("browser failed");
             return browser;
           },
-        },
+        }),
       },
     },
     processOverrides: {
@@ -285,7 +281,7 @@ test("capture failures stop children and retain logs without publishing a run", 
 test("comparison resolves commits, host PR metadata and changed PR heads", async (t) => {
   for (const mode of ["ok", "no-head-repo", "changed"]) {
     const f = await captureFixture(t, { mode });
-    const context = f.exports.resolvePullRequest("owner/repo", 1);
+    const context = await f.exports.resolvePullRequest("owner/repo", 1);
     assert.equal(
       context.headRepository,
       mode === "no-head-repo" ? null : "owner/repo",

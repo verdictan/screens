@@ -17,7 +17,7 @@ Feedback and target changes use transactions plus explicit expected revisions.
 - Screen: project plus stable external key; a screen entry represents a state.
   Platform-specific legacy keys are preserved. Cross-platform logical grouping is
   future work rather than an inferred mapping.
-- Variant: device, theme, viewport, locale and text scale.
+- Variant: device, theme, viewport, locale, text scale and browser.
 - Capture: screen, variant, role, source revision, fixture, provenance and hash.
   Metadata and image bytes determine the ID. Captures cannot be overwritten.
 - Run: a frozen set of capture IDs, with at most one role per screen/variant.
@@ -52,9 +52,10 @@ returns HTTP 409 rather than overwriting another edit.
 
 v0.2 targets protocol 2025-03-26, with initialize, ping, tools/list and tools/call.
 It supports newline-delimited stdio and stateless JSON responses over Streamable
-HTTP. GET /mcp returns 405; server-initiated SSE is not implemented. No tool exposes
-arbitrary filesystem reads or shell execution. The explicit local CLI handles
-manifest reads, import and GitHub CLI invocations. Image tool responses are actual
+HTTP. GET /mcp returns 405; server-initiated SSE is not implemented. Registry tools do not expose
+arbitrary filesystem reads or shell execution. Headless file and execution actions
+are available only through the explicit local CLI. The explicit local CLI handles
+manifest reads and import. PR metadata uses the GitHub REST API. Image tool responses are actual
 MCP image content blocks rather than filenames.
 
 ## Trust boundary
@@ -67,7 +68,7 @@ transport security and enforced evidence provenance before enabling remote acces
 
 ## Capture execution
 
-Import never executes a repository. PR metadata comes from gh, with exact head,
+Import never executes a repository. PR metadata comes from GitHub REST, with exact head,
 base and merge-base identifiers. The explicit browser adapter clones exact commits into temporary checkouts, runs reviewed argument-array commands, captures matching variants, records provenance and removes temporary checkouts. Native
 applications must use native capture. Web screenshots must use fixture-controlled
 browser sessions. Existing evidence can be imported without being falsely
@@ -83,8 +84,8 @@ same inputs reuse the same record. Images are capped at 16 million decoded pixel
 `evidence` records immutable capture-bound assertions, procedures, observations,
 reporter identity, method and reported outcomes. Optional text/JSON/video artifacts
 are content-addressed in assets. Neither a pass nor a zero diff promotes targets
-or verifies feedback. Evidence provenance is explicitly reporter-supplied; no
-cryptographic attestation of execution is claimed. Downloads are attachments.
+or verifies feedback. Evidence provenance is explicitly reporter-supplied. Optional bundle signatures
+identify the signing key and protect exported bytes; they do not attest execution. Downloads are attachments.
 
 New runs snapshot registered screens with no captures as uncoveredScreens. This
 preserves known coverage gaps without manufacturing evidence or changing old runs.
@@ -126,3 +127,66 @@ Collapsible content remains mounted to preserve form drafts and to let command
 search reveal nested controls. Closed content is hidden from view and keyboard
 navigation. Screenshot rendering and annotation geometry remain custom React
 components. Shared styles apply the Verdictan palette to the primitives.
+
+## Review sets and selected areas
+
+Schema v4 adds review sets. Each set belongs to one immutable run and stores an
+ordered list of exact screen/variant entry keys. Changes to its name, membership,
+or order require the expected revision. Updates append an event and never change
+run captures. The library and previous/next controls follow the selected set's
+order. HTTP and MCP use the same review-set operation and store methods.
+
+Area selection uses normalized capture coordinates. A selection can become a
+capture-bound comment or select the region to compare. Existing area comments
+are selectable only when their original capture belongs to the displayed pair.
+Both previews show that region; source images remain unchanged.
+
+Pixel diffs include the normalized region in their immutable identity. Measurement
+uses the same rectangle on equal-sized decoded captures, rounds its start down
+and end up to pixel boundaries, and records the resulting `regionPixels`.
+Excluded masks remain in original image coordinates. Counts cover only the crop,
+and the difference artifact contains only the crop. Full-image results and region
+results are distinct records. Size mismatches remain unmeasured.
+
+## Headless services (schema v5)
+
+`src/headless.mjs` publishes one action catalog shared by the CLI, MCP, and HTTP.
+Descriptors include input schemas and CLI-only access for file paths, capture
+execution and storage administration. OCR uses bundled WASM code and English
+language data for registered captures, and is available through MCP.
+The CLI reads a JSON input file or typed flags. MCP uses underscore action names;
+HTTP exposes registry actions under `/api/automation/`.
+
+`src/automation.mjs` persists capture jobs, leases, checkpoints, progress events,
+schedules and agent claims. A queued capture freezes its
+expanded recipe and resolved commit. Workers renew leases and save each capture
+before recording its checkpoint. Expired leases allow a replacement worker to
+resume; cancellation invalidates ownership and aborts the old worker. The server
+starts and stops the local scheduler and worker with its own lifetime.
+
+Schedules run while `screens serve` is active. Creating a capture job or schedule
+requires explicit execution authorization. Import and discovery never enqueue
+captures. The local event log supports cursor reads and `events-watch` streams;
+there are no external webhook endpoints or distributed-worker connections.
+
+`src/evidence-tools.mjs` stores immutable derived evidence and source links apart
+from captures. Browser collectors record DOM, accessibility, console, network,
+fonts, fixtures, and selector bounds when configured. OCR uses a packaged Tesseract.js worker, WASM core, and English model without
+runtime downloads or an external executable. Perceptual scores retain exact dimensions and algorithm identity.
+CI reports have their own immutable table and can include job-only failures.
+A CI result never changes a target approval or feedback verification.
+
+`src/storage-tools.mjs` implements portable bundles, online SQLite backups,
+restore, integrity reports, usage accounting, retention plans, and signatures.
+Capture and artifact insertion transactions coordinate with explicit unreferenced
+asset removal. Assets stay in the local registry. Screens creates and manages a
+local Ed25519 signing key. Public keys can be exported and explicitly trusted
+by another registry; signatures never establish their own trust.
+
+`src/runtime.mjs` supplies the bundled Git executable and package-local Chromium, Firefox, and WebKit.
+Normal package installation downloads their pinned platform binaries. The
+installer also installs required browser system libraries on supported Linux.
+Capture and OCR do not download dependencies at runtime. Application-specific
+build commands still use the application project's own toolchain.
+
+See [headless features](headless.md) for command contracts and operating limits.

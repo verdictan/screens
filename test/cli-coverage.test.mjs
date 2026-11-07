@@ -257,7 +257,7 @@ test("CLI capture commands and PR metadata pass their exact options to the captu
 });
 test("CLI server start, signals and listen errors close the registry", async (t) => {
   for (const env of [{ PORT: "4901" }, { PORT: "" }]) {
-    let closed = 0;
+    let closed = 0, stopped = 0;
     const server = new EventEmitter();
     server.address = () => ({ port: 4901 });
     server.listen = (port, host, fn) => {
@@ -270,19 +270,26 @@ test("CLI server start, signals and listen errors close the registry", async (t)
     };
     const r = await cli(t, ["serve"], {
       env,
-      mocks: { "./server.mjs": { makeServer: () => server } },
+      mocks: {
+        "./server.mjs": { makeServer: () => server },
+        "./automation.mjs": { startAutomation: () => ({ stop: async () => { stopped++; } }) },
+      },
     });
     assert.match(r.logs[0], /4901/);
     r.events[env.PORT ? "SIGINT" : "SIGTERM"]();
     assert.equal(closed, 1);
-    assert.equal(r.events.exit, 0);
+    await tick();
+    assert.equal(stopped, 1);
+    assert.equal(r.process.exitCode, 0);
   }
   const server = new EventEmitter();
   server.listen = () => {};
+  server.close = (fn) => fn();
   const r = await cli(t, ["serve", "--port", "0", "--host", "0.0.0.0"], {
     mocks: { "./server.mjs": { makeServer: () => server } },
   });
   server.emit("error", Error("address busy"));
+  await tick();
   assert.equal(r.process.exitCode, 1);
   assert.equal(r.errors[0], "address busy");
 });
