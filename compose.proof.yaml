@@ -1,0 +1,37 @@
+# An isolated copy of the production service: no published ports or real data.
+services:
+  registry:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    environment:
+      PORT: 4900
+      SCREENS_HOST: 0.0.0.0
+      SCREENS_HOME: /data
+    volumes:
+      - proof-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+  proof:
+    build:
+      context: .
+      dockerfile: Dockerfile.proof
+    init: true
+    network_mode: service:registry
+    depends_on:
+      registry:
+        condition: service_healthy
+    environment:
+      PORT: 4900
+      SCREENS_DEPLOYMENT_URL: http://127.0.0.1:4900
+    shm_size: 1gb
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  proof-data:
