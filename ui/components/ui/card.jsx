@@ -4,7 +4,7 @@ export function Card({ className, ...props }) {
     <section
       data-slot="card"
       className={cn(
-        "rounded-xl border bg-card text-card-foreground shadow-xs",
+        "rounded-lg bg-card text-card-foreground",
         className,
       )}
       {...props}

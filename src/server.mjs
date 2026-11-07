@@ -3,7 +3,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { protocol } from "./mcp.mjs";
 import { Fault, requireThat } from "./validation.mjs";
-import { createDiff } from "./diff.mjs";
+import { mutate } from "./operations.mjs";
+import { prepareCaptures } from "./previews.mjs";
 
 async function body(req) {
   let length = 0;
@@ -26,13 +27,14 @@ export function requestHandler(store, getPort) {
     const send = (status, data, type = "application/json") => {
       res.writeHead(status, { "content-type": type });
       res.end(
-        type === "application/json" && !Buffer.isBuffer(data)
+        (type === "application/json" || type === "application/speculationrules+json") && !Buffer.isBuffer(data)
           ? JSON.stringify(data)
           : data,
       );
     };
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Speculation-Rules", '"/speculation-rules.json"');
     res.setHeader(
       "Content-Security-Policy",
       "default-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
@@ -93,6 +95,11 @@ export function requestHandler(store, getPort) {
           requireThat(existsSync(file), path === '/' ? 'Frontend is not built. Run npm run build.' : 'Asset not found', path === '/' ? 503 : 404);
           return send(200, readFileSync(file), filename.endsWith('.html') ? 'text/html; charset=utf-8' : filename.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8');
         }
+        if (path === "/speculation-rules.json")
+          return send(200, { prerender: [{ source: "document", where: { and: [
+            { href_matches: ["/", "/?*"] },
+            { selector_matches: "a[data-review-link]" },
+          ] }, eagerness: "moderate" }] }, "application/speculationrules+json");
         if (path === "/api/health")
           return send(200, { ok: true, version: "0.3.0" });
         if (path === "/api/projects") return send(200, store.projects());
@@ -104,12 +111,18 @@ export function requestHandler(store, getPort) {
               query: url.searchParams.get("q") || "",
             }),
           );
-        if (path === "/api/screen")
-          return send(200, store.getScreen(url.searchParams.get("id")));
+        if (path === "/api/screen") {
+          const id = url.searchParams.get("id");
+          await prepareCaptures(store, store.getScreen(id).captures);
+          return send(200, store.getScreen(id));
+        }
         if (path === "/api/runs")
           return send(200, store.runs(url.searchParams.get("project")));
-        if (path === "/api/compare")
-          return send(200, store.compare(url.searchParams.get("run")));
+        if (path === "/api/compare") {
+          const id = url.searchParams.get("run");
+          await prepareCaptures(store, store.getRun(id).captureIds.map((capture) => store.getCapture(capture)));
+          return send(200, store.compare(id));
+        }
         if (path === "/api/evidence")
           return send(
             200,
@@ -147,19 +160,21 @@ export function requestHandler(store, getPort) {
           415,
         );
         const input = await body(req);
-        if (path === "/api/diffs")
-          return send(201, await createDiff(store, input));
-        if (path === "/api/evidence")
-          return send(201, store.addEvidence(input));
-        if (path === "/api/notes") return send(201, store.addNote(input));
-        if (path === "/api/notes/update")
-          return send(200, store.updateNote(input, { human: true }));
-        if (path === "/api/targets/approve")
-          return send(200, store.approveTarget(input));
-        if (path === "/api/projects") return send(201, store.project(input));
-        if (path === "/api/screens") return send(201, store.screen(input));
-        if (path === "/api/captures") return send(201, store.capture(input));
-        if (path === "/api/runs") return send(201, store.run(input));
+        const operations = {
+          "/api/diffs": ["diff", 201],
+          "/api/evidence": ["evidence", 201],
+          "/api/notes": ["note", 201],
+          "/api/notes/update": ["note.update", 200],
+          "/api/targets/approve": ["target", 200],
+          "/api/projects": ["project", 201],
+          "/api/screens": ["screen", 201],
+          "/api/captures": ["capture", 201],
+          "/api/runs": ["run", 201],
+        };
+        if (operations[path]) {
+          const [operation, status] = operations[path];
+          return send(status, await mutate(store, operation, input, req.headers["idempotency-key"]));
+        }
       }
       send(404, { error: "Not found" });
     } catch (e) {

@@ -1,5 +1,6 @@
 import { requireThat } from "./validation.mjs";
 import { createDiff } from "./diff.mjs";
+import { mutate } from "./operations.mjs";
 const string = { type: "string" };
 const object = (properties, required = []) => ({
   type: "object",
@@ -192,12 +193,21 @@ export function mcpTools(store) {
     ],
     [
       "reviews_add_note",
-      "Add feedback tied to an immutable capture, optionally at normalized image coordinates.",
+      "Add feedback tied to an immutable capture, optionally at a point or rectangular region in normalized image coordinates.",
       object(
         {
           capture: string,
           text: string,
           author: string,
+          region: object(
+            {
+              x: { type: "number", minimum: 0, maximum: 1 },
+              y: { type: "number", minimum: 0, maximum: 1 },
+              width: { type: "number", exclusiveMinimum: 0, maximum: 1 },
+              height: { type: "number", exclusiveMinimum: 0, maximum: 1 },
+            },
+            ["x", "y", "width", "height"],
+          ),
           point: object(
             {
               x: { type: "number", minimum: 0, maximum: 1 },
@@ -225,12 +235,18 @@ export function mcpTools(store) {
       (a) => store.updateNote({ ...a, status: "submitted" }),
     ],
   ];
-  return tools.map(([name, description, inputSchema, call]) => ({
-    name,
-    description,
-    inputSchema,
-    call,
-  }));
+  const mutations = {
+    diffs_create: "diff", evidence_add: "evidence", screens_register: "screen",
+    captures_register: "capture", reviews_add_note: "note", reviews_submit_fix: "note.submit",
+  };
+  return tools.map(([name, description, inputSchema, call]) => {
+    const operation = mutations[name];
+    if (operation) inputSchema.properties.idempotencyKey = string;
+    return {
+      name, description, inputSchema,
+      call: operation ? ({ idempotencyKey, ...input }) => mutate(store, operation, input, idempotencyKey) : call,
+    };
+  });
 }
 
 export function protocol(store) {

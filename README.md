@@ -66,10 +66,29 @@ Replace `/path/to/your-app` with your app's folder. Open
 [localhost:4800](http://127.0.0.1:4800) and keep the terminal open.
 Restart your AI assistant in your app's project to load the Screens tools.
 
+## Develop Screens
+
+```sh
+npm run dev
+```
+
+Open [localhost:5173](http://127.0.0.1:5173). React and CSS edits update through
+Vite hot reload. Changes to the API source restart the backend automatically.
+The API runs on port 4801; Vite forwards API and MCP requests to it.
+Press **Ctrl+C** to stop both servers. No production build is needed.
+
+Development uses your existing local registry. To use separate data or ports:
+
+```sh
+SCREENS_HOME=.screens/dev SCREENS_DEV_PORT=5174 SCREENS_API_PORT=4802 npm run dev
+```
+
+Use different ports for the UI and API. Both servers bind to this computer only.
+
 ## Review a screen
 
 1. **Compare** the current screenshot with the design.
-2. **Click the screenshot** to leave feedback.
+2. **Click a point or choose Select area** and drag over part of the screenshot to leave a comment.
 3. **Ask your assistant** to fix the issue and add a new screenshot.
 4. **Review the result** and accept it when you are satisfied.
 

@@ -22,7 +22,7 @@ export class Store {
     this.directory = directory;
     this.db = new DatabaseSync(join(directory, "screens.sqlite"));
     requireThat(
-      this.db.prepare("PRAGMA user_version").get().user_version <= 2,
+      this.db.prepare("PRAGMA user_version").get().user_version <= 3,
       "Registry was created by a newer Screens version",
       409,
     );
@@ -40,21 +40,64 @@ export class Store {
       CREATE INDEX IF NOT EXISTS evidence_capture ON evidence(capture);
       CREATE INDEX IF NOT EXISTS captures_screen ON captures(screen);
       CREATE INDEX IF NOT EXISTS notes_capture ON notes(capture);
-      PRAGMA user_version=2;`);
+      CREATE TABLE IF NOT EXISTS previews (hash TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS requests (key TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, data TEXT NOT NULL);
+      PRAGMA user_version=3;`);
   }
   close() {
     this.db.close();
   }
   transaction(fn) {
-    this.db.exec("BEGIN IMMEDIATE");
+    const savepoint = `write_${randomUUID().replaceAll("-", "")}`;
+    const outer = !this.transactionDepth;
+    this.db.exec(outer ? "BEGIN IMMEDIATE" : `SAVEPOINT ${savepoint}`);
+    this.transactionDepth = (this.transactionDepth || 0) + 1;
     try {
-      const r = fn();
-      this.db.exec("COMMIT");
-      return r;
-    } catch (e) {
-      this.db.exec("ROLLBACK");
-      throw e;
+      const result = fn();
+      this.db.exec(outer ? "COMMIT" : `RELEASE ${savepoint}`);
+      return result;
+    } catch (error) {
+      this.db.exec(outer ? "ROLLBACK" : `ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`);
+      throw error;
+    } finally {
+      this.transactionDepth--;
     }
+  }
+  requestFingerprint(operation, input) {
+    const canonical = (value) => Array.isArray(value)
+      ? value.map(canonical)
+      : value && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map((k) => [k, canonical(value[k])]))
+        : value;
+    return createHash("sha256").update(JSON.stringify([operation, canonical(input)])).digest("hex");
+  }
+  replay(requestKey, operation, input) {
+    if (requestKey === undefined) return null;
+    requireThat(typeof requestKey === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey), "Idempotency-Key must be a UUID v4");
+    const previous = this.db.prepare("SELECT fingerprint,data FROM requests WHERE key=?").get(requestKey);
+    if (!previous) return null;
+    requireThat(previous.fingerprint === this.requestFingerprint(operation, input), "Idempotency key was used for a different action", 409);
+    return parse(previous);
+  }
+  once(requestKey, operation, input, action) {
+    return this.transaction(() => {
+      const previous = this.replay(requestKey, operation, input);
+      if (previous) return previous;
+      const result = action();
+      if (requestKey !== undefined) {
+        this.db.prepare("INSERT INTO requests VALUES (?,?,?)").run(
+          requestKey, this.requestFingerprint(operation, input), JSON.stringify(result),
+        );
+      }
+      return result;
+    });
+  }
+  getPreview(hash) {
+    return parse(this.db.prepare("SELECT data FROM previews WHERE hash=?").get(hash));
+  }
+  savePreview(hash, preview) {
+    this.db.prepare("INSERT OR IGNORE INTO previews VALUES (?,?)").run(hash, JSON.stringify(preview));
+    return this.getPreview(hash);
   }
   event(type, data) {
     this.db
@@ -139,9 +182,9 @@ export class Store {
     );
     requireThat(screen, "Screen not found", 404);
     const captures = this.db
-      .prepare("SELECT data FROM captures WHERE screen=? ORDER BY rowid DESC")
+      .prepare("SELECT id FROM captures WHERE screen=? ORDER BY rowid DESC")
       .all(id)
-      .map(parse);
+      .map((row) => this.getCapture(row.id));
     const notes = this.db
       .prepare(
         "SELECT n.data FROM notes n JOIN captures c ON n.capture=c.id WHERE c.screen=? ORDER BY n.rowid",
@@ -191,7 +234,7 @@ export class Store {
     const existing = parse(
       this.db.prepare("SELECT data FROM captures WHERE id=?").get(id),
     );
-    if (existing) return existing;
+    if (existing) return this.getCapture(id);
     const path = join(this.directory, "assets", hash);
     try {
       writeFileSync(path, bytes, { flag: "wx", mode: 0o600 });
@@ -217,7 +260,7 @@ export class Store {
         .get(text(id, "capture")),
     );
     requireThat(value, "Capture not found", 404);
-    return value;
+    return { ...value, preview: this.getPreview(value.hash) };
   }
   image(id) {
     const capture = this.getCapture(id);
@@ -503,6 +546,10 @@ export class Store {
       screen: capture.screen,
       text: text(input.text, "note", 10000),
       point: point(input.point),
+      region: input.region ? {
+        x: input.region.x, y: input.region.y,
+        width: input.region.width, height: input.region.height,
+      } : null,
       author: text(input.author ?? "reviewer", "author"),
       status: "open",
       revision: 1,

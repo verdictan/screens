@@ -6,6 +6,10 @@ import { Fault, requireThat } from "./validation.mjs";
 const algorithm = `rgba-max-channel-v1/sharp-${sharp.versions.sharp}/vips-${sharp.versions.vips}`;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 export async function createDiff(store, input) {
+  const { value, bytes } = await prepareDiff(store, input);
+  return store.saveDiff(value, bytes);
+}
+export async function prepareDiff(store, input) {
   const left = store.getCapture(input.left),
     right = store.getCapture(input.right);
   requireThat(
@@ -44,7 +48,7 @@ export async function createDiff(store, input) {
   };
   const id = hash(JSON.stringify(identity));
   const existing = store.findDiff(id);
-  if (existing) return existing;
+  if (existing) return { value: existing };
   const decode = async (c) => {
     try {
       const image = sharp(store.image(c.id).bytes, {
@@ -92,13 +96,13 @@ export async function createDiff(store, input) {
     acceptance: "not-assessed",
   };
   if (a.info.width !== b.info.width || a.info.height !== b.info.height) {
-    return store.saveDiff({
+    return { value: {
       ...value,
       status: "dimension-mismatch",
       image: null,
       changedPixels: null,
       comparedPixels: 0,
-    });
+    } };
   }
   const { width, height } = a.info;
   for (const m of masks)
@@ -144,8 +148,8 @@ export async function createDiff(store, input) {
   const bytes = await sharp(output, { raw: { width, height, channels: 4 } })
     .png()
     .toBuffer();
-  return store.saveDiff(
-    {
+  return {
+    value: {
       ...value,
       status: "measured",
       changedPixels,
@@ -156,5 +160,5 @@ export async function createDiff(store, input) {
       url: `/api/diffs/${id}/image`,
     },
     bytes,
-  );
+  };
 }

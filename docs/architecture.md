@@ -21,7 +21,7 @@ Feedback and target changes use transactions plus explicit expected revisions.
 - Capture: screen, variant, role, source revision, fixture, provenance and hash.
   Metadata and image bytes determine the ID. Captures cannot be overwritten.
 - Run: a frozen set of capture IDs, with at most one role per screen/variant.
-- Note: immutable capture anchor, optional normalized point, text, status,
+- Note: immutable capture anchor, optional normalized point or rectangular region, text, status,
   revision, resolution and submitted evidence ID.
 - Target approval: current approved capture per screen/variant and revision.
   An append-only event log records approval and feedback transitions.
@@ -41,7 +41,8 @@ not resize mismatched screenshots to manufacture alignment.
 
 ## Feedback semantics
 
-Notes retain their original capture. Earlier notes are visible with a link to the
+Notes retain their original capture. Area comments store a region with normalized
+`x`, `y`, `width`, and `height`, so the mark scales with the preview. Earlier notes are visible with a link to the
 original evidence but are not drawn on newer images. Agents submit a fresh
 implementation capture of the same screen and variant plus an explanation.
 Human-facing UI offers verification and reopening. A stale expected revision
@@ -92,3 +93,36 @@ Schema v2 adds tables and an evidence index; it retains all v1 rows and assets.
 Run comparisons expose `measurements` for all measured pairs of exact captures.
 The older `pixelComparison` byte-level summary is explicitly scoped by
 `pixelComparisonPair` to current/pr; it is not a summary of target comparisons.
+
+## Workspace responsiveness
+
+Schema v3 adds derived image previews and idempotency records. Preview dimensions
+and ThumbHashes are stored by image hash, separately from immutable captures.
+Uploads prepare previews before returning; imported images prepare them when first
+opened in the review service. Preview decoding has the same 16-million-pixel limit
+as comparisons.
+
+HTTP mutations accept an `Idempotency-Key` UUID v4. MCP mutation tools accept
+`idempotencyKey`. The shared operation service persists the request fingerprint
+and result with the write. Reusing a key with different input returns 409. Pixel
+diffs remain content-addressed, including when concurrent requests compute them.
+
+The browser caches reads in memory and refreshes active queries on focus, reconnect,
+and writes. Revision checks remain authoritative. Reopening feedback is optimistic
+with a seven-second Undo window before sending the update; failures restore the
+server state. Approvals and verification wait for the server.
+
+## UI components
+
+Standard interactions use local shadcn components in `ui/components/ui/`.
+Command uses cmdk inside a Radix Dialog on desktop and a Vaul Drawer on phones.
+The mobile library also uses Drawer. Forms compose Field, FieldLabel, FieldSet,
+Input, Textarea, and NativeSelect; disclosures use Collapsible and the image
+blend uses Slider. ToggleGroup owns exclusive view and filter choices. Alerts
+and Sonner provide notices and notifications. The seven-second Undo delay stays
+in the application service.
+
+Collapsible content remains mounted to preserve form drafts and to let command
+search reveal nested controls. Closed content is hidden from view and keyboard
+navigation. Screenshot rendering and annotation geometry remain custom React
+components. Shared styles apply the Verdictan palette to the primitives.

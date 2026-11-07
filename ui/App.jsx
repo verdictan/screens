@@ -1,58 +1,34 @@
-import React, { useEffect, useState } from "react";
-import {
-  Layers,
-  Search,
-  Menu,
-  ChevronLeft,
-  ChevronRight,
-  ArrowUpRight,
-  Check,
-  MessageSquare,
-  Images,
-  LoaderCircle,
-  PanelLeftClose,
-  PanelLeftOpen,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { NativeSelect } from "@/components/ui/native-select";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { api, useResource, entryKey } from "@/lib/api";
-import { Comparison } from "./Comparison";
-import { Feedback, Evidence, History } from "./ReviewPanels";
-import { cn } from "@/lib/utils";
-export function Field({ label, children, className }) {
-  return (
-    <label
-      className={cn(
-        "flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground",
-        className,
-      )}
-    >
-      {label}
-      {children}
-    </label>
-  );
-}
-export function Notice({ children }) {
-  return (
-    <div
-      role="status"
-      className="rounded-lg border border-warning/25 bg-warning-surface px-4 py-3 text-sm text-warning"
-    >
-      {children}
-    </div>
-  );
-}
+import { toast } from "sonner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import React, { useEffect, useRef, useState } from "react";
+import { Layers, Search, Check, Images, Copy, PanelLeftClose, PanelLeftOpen, RefreshCw } from "lucide-react";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { NativeSelect, NativeSelectOption } from "./components/ui/native-select";
+import { Alert, AlertDescription } from "./components/ui/alert";
+import { CaptureImage } from "./components/CaptureImage";
+import { CommandMenu, collectActions } from "./components/CommandMenu";
+import { Review } from "./Review";
+import { api, useResource, useDelayedLoading, refreshResources, entryKey } from "./lib/api";
+import { cn } from "./lib/utils";
+import { changeView, useSpring } from "./lib/motion";
+import { matchesShortcut, shortcutLabel, typing } from "./lib/shortcuts";
+
 export function App() {
+  const shell = useRef(null);
+  const [tab, setTab] = useState("compare");
+  const [focused, setFocused] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commands, setCommands] = useState([]);
+  const [mobile, setMobile] = useState(() => matchMedia("(max-width: 760px)").matches);
+  useEffect(() => {
+    const media = matchMedia("(max-width: 760px)");
+    const update = () => setMobile(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const params = new URLSearchParams(location.search);
   const [projectId, setProjectId] = useState(params.get("project") || "");
   const [runId, setRunId] = useState(params.get("run") || "");
@@ -67,28 +43,26 @@ export function App() {
   const [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all"),
     [menu, setMenu] = useState(false),
-    [revision, setRevision] = useState(0),
     [message, setMessage] = useState("");
+  useSpring(shell, "--library-progress", mobile ? Number(menu) : Number(!collapsed));
   const projects = useResource("/api/projects");
+  const allScreens = useResource("/api/screens");
   const project =
     projects.data?.find((p) => p.id === projectId) || projects.data?.[0];
   const runs = useResource(
     project ? `/api/runs?project=${encodeURIComponent(project.id)}` : null,
-    revision,
   );
   const chosenRun = runs.data?.find((r) => r.id === runId) || runs.data?.[0];
   const comparison = useResource(
     chosenRun ? `/api/compare?run=${chosenRun.id}` : null,
-    revision,
   );
   const run = comparison.data;
   const entry =
     run?.entries.find((e) => entryKey(e) === selected) || run?.entries[0];
   const detail = useResource(
     entry ? `/api/screen?id=${encodeURIComponent(entry.screen)}` : null,
-    revision,
   );
-  const refresh = () => setRevision((r) => r + 1);
+  const refresh = () => refreshResources();
   useEffect(() => {
     if (!project) return;
     const u = new URL(location.href);
@@ -99,9 +73,11 @@ export function App() {
     u.hash = entry ? encodeURIComponent(entryKey(entry)) : "";
     history.replaceState(null, "", u);
   }, [project?.id, chosenRun?.id, entry && entryKey(entry)]);
-  const perform = async (fn) => {
+  const perform = async (fn, success) => {
     try {
       await fn();
+      setMessage("");
+      if (success) toast.success(success);
     } catch (e) {
       setMessage(e.message);
     }
@@ -122,437 +98,174 @@ export function App() {
             (run.source?.number && !e.captures.pr)),
     );
   const select = (e) => {
-    setSelected(entryKey(e));
+    changeView(() => { setSelected(entryKey(e)); setTab("compare"); });
     setMenu(false);
   };
   const index = list.findIndex(
     (e) => entryKey(e) === entryKey(entry),
   );
+  async function showPage(value) {
+    await changeView(() => { setTab(value); setFocused(false); });
+    if (matchMedia("(max-width: 1100px)").matches) {
+      document.getElementById("review-panel")?.scrollIntoView({ block: "start" });
+    }
+  }
+  function openCommands() {
+    const navigation = [
+      ...(run && entry ? ["compare", "feedback", "evidence", "history"] : []).map((page, i) => ({
+        id: `page-${page}`, label: page === "compare" ? "Review overview" : page[0].toUpperCase() + page.slice(1), group: "Review",
+        shortcut: `Alt+${i + 1}`, run: () => showPage(page),
+      })),
+      { id: "library", label: (mobile ? menu : !collapsed) ? "Hide library" : "Show library", group: "Workspace", shortcut: "Mod+b", run: () => mobile ? setMenu(!menu) : setCollapsed(!collapsed) },
+      { id: "focus", label: focused ? "Show review panel" : "Focus on screenshots", group: "Workspace", run: () => changeView(() => setFocused(!focused)) },
+      { id: "refresh", label: "Refresh workspace", group: "Workspace", run: refresh },
+      { id: "search", label: "Find a screen", group: "Workspace", shortcut: "/", run: () => { setCollapsed(false); setMenu(true); requestAnimationFrame(() => document.getElementById("search")?.focus()); } },
+      ...(projects.data || []).map((project) => ({ id: `project-${project.id}`, label: project.name, group: "Projects", run: () => changeView(() => { setProjectId(project.id); setRunId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }) })),
+      ...(runs.data || []).map((run) => ({ id: `run-${run.id}`, label: run.title, group: "Review runs", run: () => changeView(() => { setRunId(run.id); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }) })),
+      ...(allScreens.data || []).map((screen) => ({
+        id: `screen-${screen.id}`, label: screen.title, group: `Screens · ${screen.project}`,
+        run: () => perform(async () => {
+          const [runs, detail] = await Promise.all([
+            api(`/api/runs?project=${encodeURIComponent(screen.project)}`),
+            api(`/api/screen?id=${encodeURIComponent(screen.id)}`),
+          ]);
+          const run = runs.find((r) => detail.captures.some((c) => r.captureIds.includes(c.id)));
+          if (!run) throw Error("This screen has no captures in a review run yet.");
+          const capture = detail.captures.find((c) => run.captureIds.includes(c.id));
+          changeView(() => { setProjectId(screen.project); setRunId(run.id); setSelected(entryKey(capture)); setQuery(""); setFilter("all"); setTab("compare"); });
+        }),
+      })),
+    ];
+    setCommands([...navigation, ...collectActions(showPage)]);
+    setCommandOpen(true);
+  }
+  useEffect(() => {
+    if (commandOpen) openCommands();
+  }, [allScreens.data, projects.data, runs.data, detail.data]);
   useEffect(() => {
     const onKey = (event) => {
-      if (event.target.closest('input,textarea,select,button,[role="tab"]'))
-        return;
-      const offset =
-        event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-      if (offset && list[index + offset]) {
-        event.preventDefault();
-        select(list[index + offset]);
+      if (event.defaultPrevented || typing(event) || commandOpen || event.repeat || event.target.closest('[role="dialog"], [role="slider"]')) return;
+      if (matchesShortcut(event, "Mod+k")) { event.preventDefault(); openCommands(); return; }
+      if (matchesShortcut(event, "Mod+b")) { event.preventDefault(); mobile ? setMenu(!menu) : setCollapsed(!collapsed); return; }
+      if (matchesShortcut(event, "/")) {
+        event.preventDefault(); setCollapsed(false); setMenu(true);
+        requestAnimationFrame(() => document.getElementById("search")?.focus()); return;
       }
+      for (const [i, page] of ["compare", "feedback", "evidence", "history"].entries()) {
+        if (matchesShortcut(event, `Alt+${i + 1}`) && run && entry) { event.preventDefault(); showPage(page); return; }
+      }
+      const target = [...document.querySelectorAll("[data-shortcut]")].find((element) =>
+        !element.disabled && element.checkVisibility() && !element.closest("[inert], [hidden]") && matchesShortcut(event, element.dataset.shortcut));
+      if (target) { event.preventDefault(); target.click(); return; }
+      if (event.target.closest('button, [role="tab"]') || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+      const offset = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+      if (offset && list[index + offset]) { event.preventDefault(); select(list[index + offset]); }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [list, index]);
+  });
   const error =
-    projects.error || runs.error || comparison.error || detail.error;
+    projects.error || runs.error || comparison.error || detail.error || allScreens.error;
+  const loading = !error && (!projects.data || project && !runs.data || chosenRun && (!run || !detail.data));
+  const skeletonVisible = useDelayedLoading(Boolean(loading), `${project?.id}|${chosenRun?.id}|${entry?.screen}`);
+  const feedbackCount = (run?.entries || []).filter((screen) => screen.openNotes > 0).length;
+  const approvedCount = (run?.entries || []).filter((screen) => screen.targetApproval).length;
+  const setupRequest = "Use Screens to load this project's existing screenshots. Show me which screens still need screenshots.";
+  const library = (
+        <aside className={cn("screen-library", menu && "library-open")} inert={mobile ? !menu : collapsed} aria-label="Screen library">
+          <div className="library-heading"><h2>Library</h2><span id="count">{run?.entries.length || 0}</span></div>
+          {chosenRun && <div className="run-selection"><NativeSelect className="run-picker" aria-label="Review run" value={chosenRun.id}
+            onChange={(event) => { const id = event.target.value; changeView(() => { setRunId(id); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
+            {runs.data?.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.title}</NativeSelectOption>)}
+          </NativeSelect></div>}
+          <div className="library-search"><Search aria-hidden="true" /><Input id="search" aria-label="Find a screen" placeholder="Find a screen" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>/</kbd></div>
+          <ToggleGroup className="library-filters" type="single" aria-label="Screen filter" value={filter} onValueChange={(value) => { if (value) setFilter(value); }}>
+            {[["all", "All"], ["open", "Feedback"], ["missing", "Missing"]].map(([value, label]) => <ToggleGroupItem key={value} value={value}>{label}</ToggleGroupItem>)}
+          </ToggleGroup>
+          <nav id="screens" aria-label="Screens" className="library-list">
+            {list.map((item, i) => {
+              const preview = item.captures.pr || item.captures.current || item.captures.target;
+              return <React.Fragment key={entryKey(item)}>
+                {(i === 0 || list[i - 1].group !== item.group) && <h3 className="library-group">{item.group}</h3>}
+                <a className="screen-item" href={`/?project=${encodeURIComponent(project.id)}&run=${chosenRun.id}#${encodeURIComponent(entryKey(item))}`} data-review-link
+                  title={`${item.title} · ${item.variant.device} · ${item.variant.theme} · ${item.variant.locale} · ${item.variant.viewport}`}
+                  aria-current={entryKey(item) === entryKey(entry) ? "page" : undefined}
+                  onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); select(item); }}>
+                  <span className="library-thumbnail" aria-hidden="true">{preview ? <CaptureImage capture={preview} alt="" loading="lazy" /> : <Images />}</span>
+                  <span className="screen-label"><strong>{item.title}</strong><span>{item.variant.device} · {item.variant.theme}{item.state && item.state !== "default" ? ` · ${item.state}` : ""}</span></span>
+                  <span className={cn("screen-state", item.openNotes > 0 ? "has-feedback" : item.targetApproval && "is-approved")} title={item.openNotes ? `${item.openNotes} open feedback` : item.targetApproval ? "Design approved" : "Awaiting review"}>
+                    {item.openNotes > 0 ? item.openNotes : item.targetApproval ? <Check aria-label="Design approved" /> : <span className="status-dot" aria-label="Awaiting review" />}
+                  </span>
+                </a>
+              </React.Fragment>;
+            })}
+            {!loading && !list.length && <div className="library-empty"><p>{query ? "No matching screens" : filter !== "all" ? "Nothing in this view" : "Your screens will appear here"}</p>
+              {(query || filter !== "all") && <Button variant="ghost" size="sm" onClick={() => { setQuery(""); setFilter("all"); }}>Show all screens</Button>}
+            </div>}
+          </nav>
+          <footer className="library-footer">
+            {run && <p>{approvedCount} designs approved<span>{feedbackCount} with feedback</span></p>}
+            <div><span><kbd>←</kbd><kbd>→</kbd> Switch screens</span><Button variant="ghost" size="icon" aria-label="Refresh workspace" onClick={refresh}><RefreshCw /></Button></div>
+          </footer>
+        </aside>
+  );
   return (
-    <div className={cn("screens-shell", collapsed && "library-collapsed")}>
-      <a
-        href="#main"
-        className="sr-only z-50 rounded bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
-      >
-        Skip to comparison
-      </a>
+    <div ref={shell} className={cn("screens-shell", collapsed && "library-collapsed")}>
+      <a href="#main" className="skip-link">Skip to comparison</a>
       <header className="workspace-header">
-        <div className="flex min-w-0 items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="mobile-menu"
-            aria-label="Toggle screen library"
-            aria-expanded={menu}
-            onClick={() => setMenu(!menu)}
-          >
-            <Menu />
+        <div className="workspace-identity">
+          <Button id="library-toggle" className="library-toggle" variant="ghost" size="icon" shortcut="Mod+b"
+            aria-label={(mobile ? menu : !collapsed) ? "Hide screen library" : "Show screen library"}
+            aria-expanded={mobile ? menu : !collapsed}
+            onClick={() => mobile ? setMenu(!menu) : setCollapsed(!collapsed)}>
+            <span className="icon-swap" data-swapped={mobile ? !menu : collapsed} aria-hidden="true"><PanelLeftClose className="icon-first" /><PanelLeftOpen className="icon-second" /></span>
           </Button>
-          <a
-            href="/"
-            className="flex items-center gap-2.5 font-semibold tracking-tight"
-          >
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Layers className="size-4" />
-            </span>
-            <span className="text-base">screens</span>
-          </a>
-          <span className="mx-1 text-border">/</span>
-          <span className="truncate text-sm text-muted-foreground">
-            {project?.name || "Workspace"}
-          </span>
+          <a href="/" data-review-link className="wordmark"><Layers aria-hidden="true" /><span>Screens</span></a>
+          {projects.data?.length > 0 && <NativeSelect className="project-picker" aria-label="Project" value={project?.id || ""}
+            onChange={(event) => { const id = event.target.value; changeView(() => { setProjectId(id); setRunId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
+            {projects.data.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
+          </NativeSelect>}
         </div>
-        <div className="flex min-w-0 items-center gap-4">
-          {chosenRun && (
-            <NativeSelect
-              className="run-picker"
-              aria-label="Review run"
-              value={chosenRun.id}
-              onChange={(e) => {
-                setRunId(e.target.value);
-                setSelected("");
-              }}
-            >
-              {runs.data?.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.title}
-                </option>
-              ))}
-            </NativeSelect>
-          )}
-          <span className="registry-indicator">
-            <span className="size-1.5 rounded-full bg-success-indicator" />
-            Local
-          </span>
+        <div className="workspace-actions">
+          <Button className="command-trigger" variant="secondary" size="sm" aria-label="Search screens and actions" shortcut="Mod+k" onClick={openCommands}>
+            <Search /><span>Search</span><kbd>{shortcutLabel("Mod+K")}</kbd>
+          </Button>
         </div>
       </header>
       <div className="workspace-body">
-        <aside className={cn("screen-library", menu && "library-open")}>
-          <div className="space-y-4 p-4">
-            <Field label="Project">
-              <NativeSelect
-                aria-label="Project"
-                value={project?.id || ""}
-                onChange={(e) => {
-                  setProjectId(e.target.value);
-                  setRunId("");
-                  setSelected("");
-                }}
-              >
-                {!projects.data?.length && (
-                  <option value="">No projects</option>
-                )}
-                {projects.data?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
-            <div className="flex items-center justify-between">
-              <h2 className="text-xs font-medium text-muted-foreground">
-                Screens
-              </h2>
-              <span
-                className="font-mono text-[11px] text-muted-foreground"
-                id="count"
-              >
-                {list.length}
-              </span>
-            </div>
-            <div className="relative">
-              <Search className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
-              <Input
-                id="search"
-                aria-label="Find a screen"
-                placeholder="Find a screen…"
-                className="bg-background pl-9"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </div>
-            <NativeSelect
-              aria-label="Screen filter"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            >
-              <option value="all">All screens</option>
-              <option value="open">With open feedback</option>
-              <option value="missing">Missing evidence</option>
-            </NativeSelect>
-          </div>
-          <nav
-            id="screens"
-            aria-label="Screens"
-            className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-4"
-          >
-            {list.map((e, i) => (
-              <React.Fragment key={entryKey(e)}>
-                {(i === 0 || list[i - 1].group !== e.group) && (
-                  <h3 className="px-3 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                    {e.group}
-                  </h3>
-                )}
-                <button
-                  onClick={() => select(e)}
-                  aria-current={
-                    entry && entryKey(e) === entryKey(entry)
-                      ? "page"
-                      : undefined
-                  }
-                  title={e.title}
-                  className="screen-item"
-                >
-                  <span className="screen-key">
-                    {e.state || String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="line-clamp-2 text-xs font-medium leading-5">
-                      {e.title}
-                    </span>
-                    <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-                      {e.variant.device} · {e.state}
-                    </span>
-                  </span>
-                  {e.openNotes > 0 && (
-                    <Badge variant="outline">{e.openNotes}</Badge>
-                  )}
-                </button>
-              </React.Fragment>
-            ))}
-            {!list.length && (
-              <p className="px-3 py-5 text-xs text-muted-foreground">
-                {query
-                  ? "No screens match this search."
-                  : "Load a project to start reviewing."}
-              </p>
-            )}
-          </nav>
-          <div className="border-t px-4 py-3 text-[11px] text-muted-foreground">
-            ← → &nbsp; Move between screens
-          </div>
-        </aside>
+        {mobile ? <Drawer direction="left" open={menu} onOpenChange={setMenu}>
+          <DrawerContent className="library-drawer" onCloseAutoFocus={(event) => { event.preventDefault(); document.getElementById("library-toggle")?.focus(); }}>
+            <DrawerTitle className="sr-only">Screen library</DrawerTitle>
+            <DrawerDescription className="sr-only">Find a screen and select a review run.</DrawerDescription>
+            <Button className="library-drawer-close" variant="ghost" onClick={() => setMenu(false)}>Close library</Button>
+            {library}
+          </DrawerContent>
+        </Drawer> : library}
         <main id="main" tabIndex={-1} className="review-workspace">
-          <Button
-            className="library-toggle"
-            variant="ghost"
-            size="sm"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={
-              collapsed ? "Show screen library" : "Hide screen library"
-            }
-          >
-            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-            <span>{collapsed ? "Show library" : "Hide library"}</span>
-          </Button>
-          {error && <Notice>{error}</Notice>}
-          {message && (
-            <div
-              className="mb-4 flex items-center gap-3 rounded-lg border bg-muted p-3 text-sm"
-              role="status"
-            >
-              <span className="flex-1">{message}</span>
-              <Button variant="ghost" size="sm" onClick={() => setMessage("")}>
-                Dismiss
-              </Button>
+          {error && <Alert className="notice" role="status"><AlertDescription>{error}<Button variant="ghost" size="sm" onClick={refresh}>Try again</Button></AlertDescription></Alert>}
+          {message && <Alert className="notice"><AlertDescription>{message}</AlertDescription><Button variant="ghost" size="sm" onClick={() => setMessage("")}>Dismiss</Button></Alert>}
+          {projects.data && (!project || runs.data?.length === 0) && <section className="welcome">
+            <div className="welcome-symbol" aria-hidden="true"><Images /></div>
+            <h1>{project ? `Add screenshots to ${project.name}` : "Add your first screenshots"}</h1>
+            <p>Compare your app with its design and comment on what needs to change.</p>
+            <div className="welcome-instruction"><p>Open your app's project in your coding assistant and ask:</p><blockquote>{setupRequest}</blockquote>
+              <Button onClick={() => perform(() => navigator.clipboard.writeText(setupRequest), "Request copied")}><Copy />Copy request</Button>
             </div>
-          )}
-          {!projects.data && !error && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="size-4 animate-spin" />
-              Connecting to registry…
-            </p>
-          )}
-          {projects.data && (!project || runs.data?.length === 0) && (
-            <div className="mx-auto max-w-2xl py-20">
-              <Badge variant="outline">YOUR SCREEN WORKSPACE</Badge>
-              <h1 className="mt-5 text-4xl font-semibold leading-tight tracking-tight">
-                Every screen.
-                <br />A clear point of comparison.
-              </h1>
-              <p className="mt-5 max-w-lg text-muted-foreground">
-                Bring design targets, implementation captures, and feedback into
-                one shared review.
-              </p>
-              <Card className="mt-8">
-                <CardHeader>
-                  <CardTitle>Load your first project</CardTitle>
-                  <CardDescription>
-                    Ask your agent to load an existing screen manifest.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <code className="block overflow-x-auto rounded bg-muted p-4 text-sm">
-                    /screens load /path/to/project
-                  </code>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    Claude Code: /screens · Codex: $screens
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-          {chosenRun && (!run || !detail.data) && !error && (
-            <p role="status" className="text-sm text-muted-foreground">
-              Loading screen evidence…
-            </p>
-          )}
-          {run && entry && detail.data && (
-            <Review
-              key={`${run.id}|${entryKey(entry)}`}
-              {...{ run, entry, detail: detail.data, refresh, perform }}
-              previous={index > 0 ? () => select(list[index - 1]) : null}
-              next={
-                index >= 0 && index < list.length - 1
-                  ? () => select(list[index + 1])
-                  : null
-              }
-            />
-          )}
+            <p className="welcome-note">Screens keeps the originals and your feedback on this computer.</p>
+            <Collapsible className="welcome-manual"><CollapsibleTrigger>Use an installed command instead</CollapsibleTrigger><CollapsibleContent><code>/screens load /path/to/project</code><p>Use <code>$screens</code> in Codex. Replace the path with your app's folder.</p></CollapsibleContent></Collapsible>
+          </section>}
+          {loading && <Review loading skeletonVisible={skeletonVisible} tab="compare" setTab={() => {}} focused={focused} setFocused={setFocused}
+            run={run || { warnings: [] }}
+            entry={entry || { title: "Screen title", screen: "loading", variant: { device: "desktop", theme: "light", viewport: "unspecified", locale: "en" }, captures: { current: { id: "loading-current", revision: "loading", variant: { viewport: "720x480" } }, target: { id: "loading-target", revision: "loading", variant: { viewport: "720x480" } } } }}
+            detail={{ captures: [], notes: [], targets: [], evidence: [] }} />}
+          {run && entry && detail.data && <Review key={`${run.id}|${entryKey(entry)}`}
+            {...{ run, entry, detail: detail.data, perform, tab, setTab: showPage, focused, setFocused }}
+            position={index + 1} total={list.length}
+            previous={index > 0 ? () => select(list[index - 1]) : null}
+            next={index >= 0 && index < list.length - 1 ? () => select(list[index + 1]) : null} />}
         </main>
       </div>
-    </div>
-  );
-}
-function Review({ run, entry, detail, refresh, perform, previous, next }) {
-  const [tab, setTab] = useState("compare");
-  const sameIds = new Set(
-    detail.captures
-      .filter(
-        (c) => JSON.stringify(c.variant) === JSON.stringify(entry.variant),
-      )
-      .map((c) => c.id),
-  );
-  const notes = detail.notes.filter((n) => sameIds.has(n.capture));
-  const exactIds = new Set(Object.values(entry.captures).map((c) => c.id));
-  const evidence = detail.evidence.filter((e) => exactIds.has(e.capture));
-  const [pin, setPin] = useState(null);
-  const warnings = [
-    ...(run.warnings || []),
-    ...(run.uncoveredScreens?.length
-      ? [
-          `${run.uncoveredScreens.length} registered screens have no captures in this run: ${run.uncoveredScreens.map((s) => s.title).join(", ")}`,
-        ]
-      : []),
-  ];
-  return (
-    <div id="review" className="space-y-4">
-      <div className="review-heading">
-        <div className="min-w-0 flex-1">
-          <div className="mb-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-            <span>{entry.group || "Screens"}</span>
-            <span>/</span>
-            <span className="font-mono">
-              {entry.state || entry.screen.split("/").pop()}
-            </span>
-          </div>
-          <h1
-            id="title"
-            title={entry.title}
-            className="line-clamp-2 text-lg font-semibold leading-6 tracking-tight"
-          >
-            {entry.title}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-            <span className="capitalize">{entry.variant.device}</span>
-            <span>·</span>
-            <span>{entry.variant.theme}</span>
-            {entry.variant.viewport !== "unspecified" && (
-              <>
-                <span>·</span>
-                <span>{entry.variant.viewport}</span>
-              </>
-            )}
-            <span>·</span>
-            <span>{entry.variant.locale}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            id="previous"
-            aria-label="Previous screen"
-            variant="ghost"
-            size="icon"
-            disabled={!previous}
-            onClick={previous}
-          >
-            <ChevronLeft />
-          </Button>
-          <Button
-            id="next"
-            aria-label="Next screen"
-            variant="ghost"
-            size="icon"
-            disabled={!next}
-            onClick={next}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
-      </div>
-      <Tabs value={tab} onValueChange={setTab}>
-        <div className="review-tabbar">
-          <TabsList aria-label="Review sections">
-            <TabsTrigger value="compare">Compare</TabsTrigger>
-            <TabsTrigger value="feedback">
-              Feedback{" "}
-              <span className="text-xs text-muted-foreground">
-                {notes.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="evidence">
-              Evidence{" "}
-              <span className="text-xs text-muted-foreground">
-                {evidence.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
-          </TabsList>
-          <Badge variant={entry.targetApproval ? "success" : "outline"}>
-            {entry.targetApproval ? "Target approved" : "Awaiting review"}
-          </Badge>
-        </div>
-        <TabsContent value="compare">
-          <Comparison
-            {...{ entry, detail, perform, refresh }}
-            onPin={(value) => {
-              setPin(value);
-              setTab("feedback");
-            }}
-          />
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-            <p>Review the exact captures. A pixel score is not acceptance.</p>
-            {entry.captures.target && !entry.targetApproval && (
-              <Button
-                id="approve"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  perform(async () => {
-                    const c = entry.captures.target;
-                    const prior = detail.targets.find((t) =>
-                      detail.captures.some(
-                        (x) =>
-                          x.id === t.capture &&
-                          JSON.stringify(x.variant) ===
-                            JSON.stringify(c.variant),
-                      ),
-                    );
-                    await api("/api/targets/approve", {
-                      capture: c.id,
-                      expectedRevision: prior?.revision ?? 0,
-                    });
-                    refresh();
-                  })
-                }
-              >
-                <Check />
-                Approve this target
-              </Button>
-            )}
-          </div>
-        </TabsContent>
-        <TabsContent value="feedback">
-          <Feedback
-            {...{ entry, detail, notes, pin, setPin, refresh, perform }}
-          />
-        </TabsContent>
-        <TabsContent value="evidence">
-          <Evidence {...{ entry, evidence, refresh, perform }} />
-        </TabsContent>
-        <TabsContent value="history">
-          <History detail={detail} />
-        </TabsContent>
-      </Tabs>
-      {warnings.length > 0 && (
-        <details className="evidence-notice">
-          <summary>
-            Evidence gaps · {warnings.length}{" "}
-            {warnings.length === 1 ? "notice" : "notices"}
-          </summary>
-          <div className="mt-3 space-y-2">
-            {warnings.map((w, i) => (
-              <p key={i}>{w}</p>
-            ))}
-          </div>
-        </details>
-      )}
+      <CommandMenu open={commandOpen} commands={commands} mobile={mobile} onClose={() => setCommandOpen(false)} />
     </div>
   );
 }

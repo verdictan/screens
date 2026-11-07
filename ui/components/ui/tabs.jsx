@@ -4,7 +4,7 @@ export function Tabs({ className, ...props }) {
   return (
     <TabsPrimitive.Root
       data-slot="tabs"
-      className={cn("flex flex-col gap-4", className)}
+      className={cn("review-tabs", className)}
       {...props}
     />
   );
@@ -26,7 +26,7 @@ export function TabsTrigger({ className, ...props }) {
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "inline-flex h-10 shrink-0 items-center justify-center gap-1.5 border-b-2 border-transparent px-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=active]:border-primary data-[state=active]:text-foreground",
+        "inline-flex h-10 shrink-0 items-center justify-center gap-1.5 relative px-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=active]:text-foreground",
         className,
       )}
       {...props}
@@ -37,6 +37,9 @@ export function TabsContent({ className, ...props }) {
   return (
     <TabsPrimitive.Content
       data-slot="tabs-content"
+      data-page={props.value}
+      forceMount
+      hidden={props.inert}
       className={cn(
         "min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,

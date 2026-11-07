@@ -14,3 +14,7 @@ and human decisions distinct. Read README.md and docs/architecture.md first.
 - Never commit screenshots, runtime databases, credentials, or local absolute paths.
 - MCP tools can submit fixes. They cannot approve targets or verify fixes.
 - Keep future work explicit in docs/roadmap.md. Do not represent planned features as working.
+
+## Screens review
+
+For Screens capture and review tasks, read [.screens/AGENTS.md](.screens/AGENTS.md).

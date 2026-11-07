@@ -11,6 +11,7 @@
     "screens": "src/cli.mjs"
   },
   "scripts": {
+    "dev": "node scripts/dev.mjs",
     "start": "node src/cli.mjs serve",
     "test": "node --experimental-vm-modules --test test/*.test.mjs",
     "test:integration": "node --test test/network.integration.mjs",
@@ -27,26 +28,31 @@
     "test:coverage": "vite build --mode coverage && c8 node --experimental-vm-modules --test test/*.test.mjs test/network.integration.mjs && playwright test test/e2e/workflow.spec.mjs test/e2e/theme.spec.mjs"
   },
   "dependencies": {
-    "sharp": "0.35.5",
-    "react": "19.3.1",
-    "react-dom": "19.3.1",
     "@radix-ui/react-slot": "1.5.0",
     "@radix-ui/react-tabs": "1.2.1",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "tailwind-merge": "3.7.0",
+    "cmdk": "1.1.1",
     "lucide-react": "1.59.0",
-    "playwright": "1.64.1"
+    "playwright": "1.64.1",
+    "radix-ui": "1.8.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5",
+    "sonner": "2.0.8",
+    "tailwind-merge": "3.7.0",
+    "thumbhash": "0.1.1",
+    "vaul": "1.1.2"
   },
   "devDependencies": {
-    "jsdom": "30.1.3",
-    "vite": "8.3.5",
-    "@vitejs/plugin-react": "6.1.2",
-    "tailwindcss": "4.3.3",
-    "@tailwindcss/postcss": "4.3.3",
-    "postcss": "8.5.30",
     "@playwright/test": "1.64.1",
-    "c8": "12.0.0"
+    "@tailwindcss/postcss": "4.3.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "c8": "12.0.0",
+    "jsdom": "30.1.3",
+    "postcss": "8.5.30",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.5"
   },
   "overrides": {
     "c8": {
