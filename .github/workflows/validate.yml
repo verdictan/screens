@@ -20,6 +20,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run check && npm test && npm run test:integration
       - run: npm run test:e2e

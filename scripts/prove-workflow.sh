@@ -9,7 +9,7 @@ hash_file() {
 }
 source_files=(install.sh install.ps1 Dockerfile Dockerfile.proof .dockerignore compose.yaml compose.proof.yaml
   package.json package-lock.json vite.config.mjs jsconfig.json components.json
-  playwright.config.mjs README.md src ui skills scripts test examples)
+  playwright.config.mjs README.md src ui skills scripts test examples docs)
 
 if [[ ${1:-} != --local ]]; then
   [[ $# -le 1 ]] || { echo 'Usage: bash scripts/prove-workflow.sh [USER@HOST]' >&2; exit 2; }

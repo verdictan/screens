@@ -28,7 +28,7 @@
     "test:coverage": "vite build --mode coverage && c8 node --experimental-vm-modules --test test/*.test.mjs test/network.integration.mjs && playwright test test/e2e/workflow.spec.mjs test/e2e/theme.spec.mjs",
     "postinstall": "node scripts/bundle-runtime.mjs",
     "runtime:install": "node scripts/bundle-runtime.mjs",
-    "prepack": "node scripts/prepare-release.mjs"
+    "release:package": "node scripts/package-release.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "1.5.0",
@@ -86,6 +86,9 @@
     "jsconfig.json",
     "components.json",
     "README.md",
-    "npm-shrinkwrap.json"
-  ]
+    "package-lock.json"
+  ],
+  "allowScripts": {
+    "dugite@3.3.2": true
+  }
 }

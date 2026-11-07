@@ -115,13 +115,18 @@ the container user (UID 1000). Never use the service as a public execution endpo
 
 ## Release parity
 
-Both releases run `scripts/prepare-release.mjs`, which builds the UI and copies
-`package-lock.json` to `npm-shrinkwrap.json`. The npm `prepack` hook runs this step
-for the Homebrew archive. Docker runs it in its build stage.
+Both releases use the committed `package-lock.json` as their dependency lock.
+The release command builds the UI and creates a portable source archive that
+includes that lockfile:
 
-The shrinkwrap is included in both releases and pins the installed dependency
-tree. Homebrew consumes it with `npm install --omit=dev`; Docker consumes it with
-`npm ci --omit=dev`.
+```sh
+npm run release:package -- --output release
+```
+
+Homebrew extracts the archive and runs `npm ci --omit=dev` inside the installed
+application directory. Docker runs the same frozen dependency installation in
+its runtime stage. Platform-specific binaries install for their target system.
+The package explicitly permits the pinned Dugite installer through `allowScripts`.
 
 Both installation paths run `scripts/bundle-runtime.mjs` through `postinstall`.
 It installs the browser revisions selected by the pinned Playwright package.
@@ -136,6 +141,7 @@ The `screens` command is available in both.
 Persistent data locations differ: Docker uses its `/data` volume; Homebrew uses
 the local registry. Each runs the same `serve` command and managed local services.
 
-Release jobs must run `npm pack` with lifecycle scripts enabled so `prepack`
-includes the current UI and dependency snapshot. Publishing runs outside this
-repository; `.github/workflows/validate.yml` does not publish release packages.
+Release jobs run `release:package` after setting the release version. The archive
+includes the built UI, package metadata, lockfile, and declared release files.
+Publishing runs outside this repository; `.github/workflows/validate.yml` does
+not publish release packages.

@@ -7,7 +7,7 @@ RUN node scripts/prepare-release.mjs
 FROM node:22.23.4-bookworm-slim
 WORKDIR /app
 ENV PLAYWRIGHT_BROWSERS_PATH=0
-COPY --from=build /app/package.json /app/npm-shrinkwrap.json ./
+COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/scripts ./scripts
 RUN npm ci --omit=dev && npm cache clean --force && chmod -R a+rX node_modules/playwright-core/.local-browsers && rm -rf /var/lib/apt/lists/*
 COPY --from=build --chown=node:node /app/src ./src

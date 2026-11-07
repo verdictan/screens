@@ -6,6 +6,6 @@ node_modules/
 test-results/
 .env
 dist/
+release/
 playwright-report/
 coverage/
-npm-shrinkwrap.json
