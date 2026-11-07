@@ -1,4 +1,4 @@
-const base = `http://127.0.0.1:${process.env.SCREENS_PORT || 4800}`;
+const base = `http://127.0.0.1:${process.env.PORT || process.env.SCREENS_PORT || 4800}`;
 async function request(path, body) {
   const res = await fetch(
     base + path,

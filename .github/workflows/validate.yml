@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       COMPOSE_PROJECT_NAME: screens-ci
+      SCREENS_PORT: 4900
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,8 +52,8 @@ jobs:
           node-version-file: .node-version
       - run: docker compose config --quiet
       - run: docker compose up -d --build --wait
-      - run: node scripts/smoke-deployment.mjs write
+      - run: docker compose exec -T screens node scripts/smoke-deployment.mjs write
       - run: docker compose restart && docker compose up -d --wait
-      - run: node scripts/smoke-deployment.mjs read
+      - run: docker compose exec -T screens node scripts/smoke-deployment.mjs read
       - if: always()
         run: docker compose logs && docker compose down
