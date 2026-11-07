@@ -19,7 +19,42 @@ Open your app's project in your AI coding assistant and ask:
 
 Your assistant needs access to local files and commands.
 
-Prefer manual setup? Install **Node.js 22.22.2+** and **Git**, then run:
+### Install with Homebrew
+
+On macOS or Linux with Homebrew installed, run:
+
+```sh
+brew install verdictan/tap/screens
+screens serve
+```
+
+Open [localhost:4800](http://127.0.0.1:4800). Keep the terminal open;
+press **Ctrl+C** to stop Screens. Your screenshots and comments remain saved.
+
+To connect your AI assistant to an app, run this in another terminal:
+
+```sh
+node "$(brew --prefix screens)/libexec/lib/node_modules/@verdictan/screens/scripts/install-skills.mjs" --project "/path/to/your-app"
+```
+
+Replace `/path/to/your-app` with your app's folder, then restart your AI assistant
+in that project.
+
+To update Screens, stop it and run:
+
+```sh
+brew update
+brew upgrade screens
+screens serve
+```
+
+Pushes to `main` trigger Jenkins to publish a new
+[GitHub release](https://github.com/verdictan/screens/releases) and update the
+[Homebrew formula](https://github.com/verdictan/homebrew-tap/blob/main/Formula/screens.rb).
+
+### Install from source
+
+Install **Node.js 22.22.2+** and **Git**, then run:
 
 ```sh
 git clone https://github.com/verdictan/screens.git
