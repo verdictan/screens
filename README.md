@@ -78,19 +78,22 @@ Pushes to `main` trigger Jenkins to publish a new
 [GitHub release](https://github.com/verdictan/screens/releases) and update the
 [Homebrew formula](https://github.com/verdictan/homebrew-tap/blob/main/Formula/screens.rb).
 
-### Install from source
+### Install with the setup script
 
-Install **Node.js 22.22.2+** and **Git**, then run:
+Install **Git** and either **Homebrew** or **Node.js 22.22.2+**, then run:
 
 ```sh
 git clone https://github.com/verdictan/screens.git
 cd screens
-node scripts/setup.mjs --project "/path/to/your-app" --start
+bash install.sh --project "/path/to/your-app" --start
 ```
 
-Replace `/path/to/your-app` with your app's folder. Open
-[localhost:4800](http://127.0.0.1:4800) and keep the terminal open.
-Restart your AI assistant in your app's project to load the Screens tools.
+Replace `/path/to/your-app` with your app's folder. With Homebrew, the script
+installs the package and starts its background service automatically. Otherwise,
+it builds from source; keep the terminal open while Screens runs. On Windows,
+use `powershell -File install.ps1 --project "/path/to/your-app" --start`.
+Open [localhost:4800](http://127.0.0.1:4800) and restart your AI assistant in your
+app's project to load the Screens tools.
 
 ## Review a screen
 
