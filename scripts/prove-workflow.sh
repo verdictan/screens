@@ -74,7 +74,7 @@ collect() {
   exit "$result"
 }
 trap collect EXIT
-exec > >(tee "$output/runner.log") 2>&1
+run_proof() {
 docker version
 docker compose version
 "${compose[@]}" config --quiet
@@ -92,3 +92,5 @@ docker exec "$runner" node scripts/proof-phase.mjs deployment
 "${compose[@]}" exec -T registry node scripts/smoke-deployment.mjs read
 docker exec "$runner" node scripts/proof-phase.mjs restart
 docker exec -e "SCREENS_PROOF_SOURCE_HASH=$source_hash" "$runner" node scripts/proof-phase.mjs summarize
+}
+run_proof 2>&1 | tee "$output/runner.log"
