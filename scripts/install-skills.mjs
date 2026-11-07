@@ -11,6 +11,11 @@ for (let i = 2; i < process.argv.length; i += 2) {
   options[process.argv[i].slice(2)] = process.argv[i + 1];
 }
 const root = fileURLToPath(new URL("../", import.meta.url));
+if (!options.project) {
+  const { installUserAgents } = await import("./install-user-agents.mjs");
+  installUserAgents(root, options);
+  process.exit(0);
+}
 const clients = selectClients(options.client);
 const runtime = options.runtime || "local";
 if (!options.project || !["local", "docker"].includes(runtime))

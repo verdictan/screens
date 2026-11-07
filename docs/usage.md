@@ -24,10 +24,16 @@ This is an implementation starter, not a hosted multi-user service. Issue leases
 ## Install
 
 Use `bash install.sh` on macOS/Linux, `powershell -File install.ps1` on Windows,
-or `npm run setup` from the checkout. Add `--start` to start the picker.
-The installer needs Node 22.22.2+ and npm already on PATH. Docker mode also needs
-Docker Compose. It builds the UI and downloads Chromium in local mode; Docker
-builds the existing image with Chromium and its system dependencies.
+or `npm run setup` from the checkout. When Homebrew is available, local setup
+installs or upgrades `verdictan/tap/screens`, connects the selected agents, and starts
+it with `brew services start screens`. It applies `--data` and `--port` through
+your Homebrew service settings. Rerunning setup restarts the service with those settings.
+
+Without Homebrew, the installer needs Node 22.22.2+ and npm, builds the UI from
+source, and uses `--start` to start the picker. `install.sh` can install Node with
+Homebrew when Node is missing. Local setup downloads Chromium unless you pass
+`--skip-browser`. Explicit `--runtime docker` uses Docker Compose instead of
+Homebrew and builds the existing image with Chromium and its system dependencies.
 
 On Linux, local browser captures also require Chromium's system libraries. Install
 those with `npx playwright install-deps chromium` if they are not present, or use
@@ -201,3 +207,5 @@ database and `assets/`. Screenshots and databases are excluded from Git.
 
 See [architecture](architecture.md), [roadmap](roadmap.md) and
 [project setup](github-setup.md).
+
+Without `--project`, setup installs user-wide skills and MCP settings for detected agents. Pass `--project DIR` for project-only setup. Restart agents after installation.
