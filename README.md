@@ -40,13 +40,39 @@ node "$(brew --prefix screens)/libexec/lib/node_modules/@verdictan/screens/scrip
 Replace `/path/to/your-app` with your app's folder, then restart your AI assistant
 in that project.
 
-To update Screens, stop it and run:
+#### Run in the background
+
+Stop any foreground `screens serve` process with **Ctrl+C**, then run:
+
+```sh
+brew services start screens
+```
+
+Run this as your normal user, without `sudo`. Screens starts in the background
+and at login, serves [localhost:4800](http://127.0.0.1:4800), and uses the same
+saved data in `~/.local/share/verdictan-screens` as the foreground command.
+
+Manage the service with:
+
+```sh
+brew services info screens
+brew services restart screens
+brew services stop screens
+```
+
+Logs are in `$(brew --prefix)/var/log/screens.log` and
+`$(brew --prefix)/var/log/screens-error.log`.
+
+#### Update Screens
 
 ```sh
 brew update
 brew upgrade screens
-screens serve
+brew services restart screens
 ```
+
+If you run Screens in a terminal instead, stop it before upgrading and run
+`screens serve` again afterward.
 
 Pushes to `main` trigger Jenkins to publish a new
 [GitHub release](https://github.com/verdictan/screens/releases) and update the
