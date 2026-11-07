@@ -93,6 +93,32 @@ Restart your AI coding assistant in your app's project, then ask:
 If there are no screenshots yet, ask your assistant to help prepare them.
 Taking new screenshots may need extra setup for your particular app.
 
+## Command shortcuts
+
+After connecting your app, type these shortcuts in your AI assistant's chat.
+
+| What you want to do | Claude Code | Codex |
+| --- | --- | --- |
+| Load this project's screenshots | `/screens load .` | `$screens load .` |
+| Review a proposed code change | `/screens compare PR 123` | `$screens compare PR 123` |
+| Work on screenshot feedback | `/screens fix the feedback on the login screen` | `$screens fix the feedback on the login screen` |
+
+The dot means the current project folder. Replace `123` with your GitHub pull
+request number, and replace `login screen` with the screen you want to fix.
+A pull request is a proposed set of code changes.
+
+These shortcuts ask your assistant to follow the Screens workflow. Enter them
+in its chat, not in Terminal. Loading uses existing screenshots; taking new ones
+may need extra setup. You still review and accept the result yourself.
+
+Other assistants have different ways to open skills. You can ask in plain language:
+
+> Use Screens to load this project, compare the screenshots for pull request 123,
+> or work on the feedback I left on the login screen.
+
+Choose the task you need from that example. If the assistant cannot find Screens,
+ask it to read `.screens/AGENTS.md` in your app's project folder.
+
 ## Your review process
 
 1. **Choose a screen.** Open it in the review page.
