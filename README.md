@@ -151,6 +151,12 @@ human review decides acceptance. See [evidence format](docs/evidence.md).
 
 ## Verification
 
+For the complete browser workflow and production-container restart proof without
+GitHub Actions, run `bash scripts/prove-workflow.sh`, or
+`bash scripts/prove-workflow.sh dennisotugo@192.168.1.142` to run on the Docker host
+and copy reports back. See [standalone proof](docs/standalone-proof.md) for the exact
+scope, isolation, screenshots, traces and pass criteria.
+
 ```sh
 npm test
 npm run check

@@ -11,3 +11,13 @@
 !scripts/
 !scripts/seed-proof.mjs
 !scripts/smoke-deployment.mjs
+!scripts/**
+!test/
+!test/**
+!skills/
+!skills/**
+!examples/
+!examples/**
+!playwright.config.mjs
+!compose.yaml
+!README.md

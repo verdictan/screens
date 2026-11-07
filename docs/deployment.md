@@ -70,14 +70,17 @@ Older binaries must not open a registry upgraded by v0.2.
 ```sh
 docker compose config --quiet
 docker compose up -d --build --wait
-node scripts/smoke-deployment.mjs write
+docker compose exec -T screens node scripts/smoke-deployment.mjs write
 docker compose restart
 docker compose up -d --wait
-node scripts/smoke-deployment.mjs read
+docker compose exec -T screens node scripts/smoke-deployment.mjs read
 ```
 
 The smoke check writes one clearly named deployment-check project and verifies it
 survives restart. CI runs this workflow in an isolated Compose project.
+
+For browser capture, feedback, fix submission, approval and restart proof without
+CI, use the [standalone Docker proof runner](standalone-proof.md).
 
 ## SSH deployment
 

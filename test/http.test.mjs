@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
+import sharp from "sharp";
 import { Store } from "../src/store.mjs";
 import { requestHandler } from "../src/server.mjs";
 
@@ -89,6 +90,33 @@ test("HTTP routes, origin and host checks, static delivery and mutations", async
   );
   assert.equal(JSON.parse((await request("/api/projects")).body)[0].id, "test");
   assert.equal((await request("/missing")).status, 404);
+});
+test("JSON evidence downloads preserve the original file bytes", async (t) => {
+  const { store, request } = setup(t);
+  store.project({ id: "download", name: "Download" });
+  store.screen({ project: "download", key: "home", title: "Home" });
+  const bytes = await sharp({
+    create: { width: 1, height: 1, channels: 3, background: "white" },
+  }).png().toBuffer();
+  const capture = store.capture({ screen: "download/home", role: "pr", bytes });
+  const report = '{\n  "outcome": "pass", "observation": "Focus restored"\n}\n';
+  const evidence = store.addEvidence({
+    capture: capture.id,
+    kind: "behavior",
+    method: "automated",
+    outcome: "pass",
+    assertion: "Closing the dialog restores focus",
+    procedure: "Close the dialog and inspect focus",
+    observation: "Focus restored",
+    author: "HTTP test",
+    artifactType: "application/json",
+    artifactBase64: Buffer.from(report).toString("base64"),
+  });
+  const response = await request(evidence.artifact.url);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers["content-type"], "application/json");
+  assert.match(response.headers["content-disposition"], /^attachment;/);
+  assert.equal(response.body, report);
 });
 test("HTTP MCP initializes, accepts notifications and rejects malformed JSON", async (t) => {
   const { request } = setup(t),

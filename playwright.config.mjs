@@ -1,4 +1,8 @@
 import { defineConfig } from "@playwright/test";
+const phase = process.env.SCREENS_PROOF_PHASE;
+if (phase && !["workflow", "deployment", "restart"].includes(phase))
+  throw new Error("Invalid proof phase");
+const results = phase ? `test-results/${phase}` : "test-results";
 export default defineConfig({
   testDir: "test/e2e",
   workers: 1,
@@ -7,8 +11,8 @@ export default defineConfig({
   expect: { timeout: 15000 },
   reporter: [
     ["list"],
-    ["html", { outputFolder: "playwright-report", open: "never" }],
-    ["json", { outputFile: "test-results/e2e-results.json" }],
+    ["html", { outputFolder: phase ? `${results}/report` : "playwright-report", open: "never" }],
+    ["json", { outputFile: `${results}/e2e-results.json` }],
   ],
   use: {
     headless: true,
@@ -17,5 +21,5 @@ export default defineConfig({
     screenshot: "on",
     video: "on",
   },
-  outputDir: "test-results/browser",
+  outputDir: `${results}/browser`,
 });

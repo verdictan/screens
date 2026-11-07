@@ -7,8 +7,11 @@ adapters, Current/Target/PR picker, comparison overlay, feedback, approval
 history, CLI, direct stdio MCP and HTTP MCP, client skill installer/packages,
 Docker Compose, pixel diffs/masks and capture-linked semantic evidence.
 
-Remaining release checks: live HTTP integration on an unrestricted loopback host,
-browser functional and responsive verification, real Claude/Codex client sessions.
+Completed release checks: live HTTP integration, deterministic browser workflow,
+responsive layouts, and production-container restart persistence. See the
+[standalone proof](standalone-proof.md) for scope and evidence.
+
+Remaining release checks: real Claude/Codex client sessions and live-account workflows.
 
 ## Milestone 2 — reproducible project loading and PR capture
 
