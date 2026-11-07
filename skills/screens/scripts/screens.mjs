@@ -81,10 +81,14 @@ if (config.runtime === "docker") {
     cli,
     ...args,
     ...(config.data && !args.includes("--data") ? ["--data", config.data] : []),
+    ...(config.port && !args.includes("--port") ? ["--port", String(config.port)] : []),
   ];
 const result = spawnSync(command, parameters, {
   stdio: "inherit",
-  env: process.env,
+  env: {
+    ...process.env,
+    ...(config.port ? { SCREENS_PORT: String(config.port) } : {}),
+  },
 });
 if (result.error) {
   console.error(result.error.message);

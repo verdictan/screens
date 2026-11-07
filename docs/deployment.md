@@ -1,6 +1,13 @@
 # Local Docker deployment
 
-Requires Docker Engine/Desktop with Compose v2. From this checkout:
+Requires Docker Engine/Desktop with Compose v2. For automatic setup with Node
+22.22.2+ installed, run:
+
+```sh
+bash install.sh --runtime docker --project /path/to/application --start
+```
+
+For a manual Docker-only setup, run from this checkout:
 
 ```sh
 docker compose up -d --build --wait
@@ -33,10 +40,13 @@ skill for every import. Do not import on the host and expect the container to se
 ## Agent setup
 
 ```sh
-npm run skills:install -- --project /absolute/project --client both --runtime docker
+npm run skills:install -- --project /absolute/project --client all --runtime docker
 claude mcp add --transport http --scope user screens http://127.0.0.1:4800/mcp
 codex mcp add screens --url http://127.0.0.1:4800/mcp
 ```
+
+Other agents can use the generated `.screens/` connection files or CLI guide; see
+[agent setup](agent-skills.md). Pass `--port` to the installer when using a custom port.
 
 The installed helper mounts input files read-only and uses Compose for load,
 compare, diff, evidence and stdio MCP. `serve` starts Compose. `pr-context` uses

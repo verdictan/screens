@@ -13,5 +13,5 @@ execFileSync(process.execPath, ["--check", join(root, "scripts/screens.mjs")], {
   stdio: "inherit",
 });
 console.log(
-  "Shared Screens skill metadata and executable resource validated for both client packages.",
+  "Shared Screens skill metadata and executable resource validated for all agent packages.",
 );

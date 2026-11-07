@@ -7,7 +7,7 @@ hash_file() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d ' ' -f 1
   else shasum -a 256 "$1" | cut -d ' ' -f 1; fi
 }
-source_files=(Dockerfile Dockerfile.proof .dockerignore compose.yaml compose.proof.yaml
+source_files=(install.sh install.ps1 Dockerfile Dockerfile.proof .dockerignore compose.yaml compose.proof.yaml
   package.json package-lock.json vite.config.mjs jsconfig.json components.json
   playwright.config.mjs README.md src ui skills scripts test examples)
 

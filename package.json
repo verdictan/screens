@@ -22,7 +22,8 @@
     "prestart": "npm run build",
     "test:e2e": "playwright test",
     "test:all": "npm run build && npm run check && npm test && npm run test:integration && npm run test:e2e",
-    "pretest": "npm run build"
+    "pretest": "npm run build",
+    "setup": "node scripts/setup.mjs"
   },
   "dependencies": {
     "sharp": "0.35.5",

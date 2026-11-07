@@ -13,12 +13,14 @@ written by the installer; it uses the configured local registry or Docker volume
 If configuration is absent, set SCREENS_CLI to the known Screens checkout's
 absolute src/cli.mjs path. Do not invent a checkout path or silently create a new
 registry. Report a missing runtime as blocked with the installation command from
-the Screens repository: `npm run skills:install -- --project PROJECT --client both`.
+the Screens repository: `npm run skills:install -- --project PROJECT --client all`.
 Never change the configured registry during an existing review.
 
 Use `/screens load .` in Claude Code. In Codex invoke `$screens load .` (or select
-Screens through the client's skill picker). Treat the request after the skill
-name as the workflow arguments, not as an arbitrary shell command. Quote paths.
+Screens through the client's skill picker). Other Agent Skills clients can load
+this same workflow. For agents without skill discovery, read the project's
+`.screens/AGENTS.md` and use `.screens/scripts/screens.mjs`, or connect through MCP.
+Treat the request after the skill name as the workflow arguments, not as an arbitrary shell command. Quote paths.
 
 ## Load a project
 
