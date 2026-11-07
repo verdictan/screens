@@ -8,7 +8,7 @@ const variants = cva(
         default: "border-transparent bg-primary text-primary-foreground",
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         outline: "border-border text-muted-foreground",
-        success: "border-emerald-200 bg-emerald-50 text-emerald-800",
+        success: "border-success/25 bg-success-surface text-success",
       },
     },
     defaultVariants: { variant: "secondary" },

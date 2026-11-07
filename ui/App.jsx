@@ -46,7 +46,7 @@ export function Notice({ children }) {
   return (
     <div
       role="status"
-      className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+      className="rounded-lg border border-warning/25 bg-warning-surface px-4 py-3 text-sm text-warning"
     >
       {children}
     </div>
@@ -197,7 +197,7 @@ export function App() {
             </NativeSelect>
           )}
           <span className="registry-indicator">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span className="size-1.5 rounded-full bg-success-indicator" />
             Local
           </span>
         </div>
