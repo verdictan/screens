@@ -3,7 +3,8 @@ import { resolve, join, posix } from "node:path";
 import sharp from "sharp";
 import { gitOutput } from "./runtime.mjs";
 import { parse as parseJson } from "jsonc-parser";
-import { captureConfig, diagnoseCaptureConfig, captureRevision, resolveRevision } from "./capture.mjs";
+import { captureConfig, diagnoseCaptureConfig, recipeScenarios } from "./capture-recipe.mjs";
+import { captureRevision, resolveRevision } from "./capture.mjs";
 import { createDiff } from "./diff.mjs";
 import { requireThat } from "./validation.mjs";
 
@@ -19,12 +20,12 @@ const sourceAt = (repo, revision, file) => git(repo, ["show", `${revision}:${fil
 const glob = (pattern) => new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\u0001").replace(/\*/g, "[^/]*").replace(/\u0001/g, ".*").replace(/\?/g, ".")}$`);
 const matches = (pattern, file) => glob(pattern.replace(/^\.\//, "")).test(file);
 const captureProperties = { repo: string, ref: string, config: string, output: string, profile: string, screens: strings, role: { enum: ["current", "target", "pr"] }, execute: { const: "yes" }, title: string };
-const executionOptions = (input, context) => ({ ...input, signal: context?.signal, onEvent: context?.onEvent, onCapture: context?.onCapture, priorCaptureIds: context?.priorCaptureIds });
+const executionOptions = (input, context) => ({ ...input, signal: context?.signal, onEvent: context?.onEvent, onCapture: context?.onCapture, priorCheckpoints: context?.priorCheckpoints, onCheckpoint: context?.onCheckpoint, assertOwnership: context?.assertOwnership });
 
 export function planCaptures(input) {
   const config = captureConfig(input.config, { profile: input.profile, screens: input.screens });
-  const jobs = config.value.screens.flatMap((screen) => config.value.variants.map((variant) => ({ screen: screen.key, path: screen.path, variant })));
-  return { project: config.value.project, configHash: config.hash, profile: input.profile || null, jobs, commands: { prepare: config.value.prepare || [], serve: config.value.serve }, config: config.value };
+  const jobs = config.value.applications.flatMap(app => (app.scenarios || []).flatMap(screen => (app.variants || []).map(variant => ({ application: app.path, screen: screen.key, path: screen.path, variant }))));
+  return { project: config.value.project, configHash: config.hash, profile: input.profile || null, jobs, commands: config.value.applications.map(app => ({ application: app.path, prepare: app.prepare || [], serve: app.serve })), config: config.value };
 }
 export function discoverRoutes(input) {
   const repo = resolve(input.repo), revision = resolveRevision(repo, input.ref || "HEAD");
@@ -103,12 +104,12 @@ export function affectedScreens(input) {
   expanded = true;
   while (expanded) { expanded = false; for (const [file, deps] of dependencies) if (!changed.has(file) && [...deps].some((dependency) => changed.has(dependency))) { changed.add(file); expanded = true; } }
   const allChanged = (config.value.sharedSources || []).some((pattern) => changes.some((file) => matches(pattern, file)));
-  const selected = config.value.screens.flatMap((screen) => {
-    const sources = [...(screen.sources || []), ...(screen.source ? [screen.source] : [])];
+  const selected = recipeScenarios(config.value).flatMap((screen) => {
+    const sources = [...(screen.sources || []), ...(screen.source ? [screen.source] : [])].map(source => posix.join(screen.application, source));
     const matched = [...changed].filter((file) => sources.some((pattern) => matches(pattern, file)));
     const packageChanged = sources.some((source) => dependencyPackages.has(owner(source)?.name));
     const reason = allChanged ? "shared-source" : !sources.length ? "unmapped-screen" : matched.length ? "source-dependency" : packageChanged ? "workspace-dependency" : null;
-    return reason ? [{ key: screen.key, reason, sources: matched }] : [];
+    return reason ? [{ key: screen.application === "." ? screen.key : `${screen.application}/${screen.key}`, reason, sources: matched }] : [];
   });
   return jsonFile({ base, head, configHash: config.hash, changedFiles: changes, affectedPackages: [...changedPackages], screens: selected, screenKeys: selected.map((screen) => screen.key) }, input.output);
 }
@@ -119,7 +120,7 @@ export async function captureRepeatability(store, input, context = {}) {
   requireThat(Number.isInteger(count) && count >= 2, "Repeatability requires at least two captures");
   const output = resolve(input.output); mkdirSync(output, { recursive: false });
   const ref = resolveRevision(input.repo, input.ref), runs = [];
-  for (let i = 0; i < count; i++) runs.push(await captureRevision(store, { ...executionOptions(input, context), ref, role: "pr", output: join(output, `sample-${i + 1}`), priorCaptureIds: [] }));
+  for (let i = 0; i < count; i++) runs.push(await captureRevision(store, { ...executionOptions(input, context), ref, role: "pr", output: join(output, `sample-${i + 1}`), priorCheckpoints: [] }));
   const baseline = store.compare(runs[0].run.id), results = [];
   for (const entry of baseline.entries) {
     const original = entry.captures.pr;
@@ -157,11 +158,10 @@ export async function captureBisect(store, input, context = {}) {
   const maximum = input.maxChangedRatio ?? 0;
   requireThat(Number.isFinite(maximum) && maximum >= 0 && maximum <= 1, "maxChangedRatio must be between zero and one");
   const output = resolve(input.output); mkdirSync(output, { recursive: false });
-  const baseline = await captureRevision(store, { ...executionOptions(input, context), ref: base, role: "pr", output: join(output, "baseline"), priorCaptureIds: [] });
+  const baseline = await captureRevision(store, { ...executionOptions(input, context), ref: base, role: "pr", output: join(output, "baseline"), priorCheckpoints: [] });
   const entries = store.compare(baseline.run.id).entries, measurements = new Map();
   const sample = async (index) => {
-    if (measurements.has(index)) return measurements.get(index);
-    const captured = await captureRevision(store, { ...executionOptions(input, context), ref: commits[index], role: "pr", output: join(output, `revision-${index}`), priorCaptureIds: [] });
+    const captured = await captureRevision(store, { ...executionOptions(input, context), ref: commits[index], role: "pr", output: join(output, `revision-${index}`), priorCheckpoints: [] });
     const current = store.compare(captured.run.id).entries, pairs = [];
     for (const entry of entries) {
       const right = current.find((item) => item.screen === entry.screen && JSON.stringify(item.variant) === JSON.stringify(entry.variant))?.captures.pr;
@@ -196,7 +196,7 @@ export async function captureMerge(store, input, context = {}) {
 export const captureActions = {
   "capture-config-diagnose": action("Report capture configuration errors with field paths and correction instructions.", { config: string, profile: string }, ["config"], (_store, input) => { const report = diagnoseCaptureConfig(input.config, { profile: input.profile }); return { file: report.file, valid: report.valid, issues: report.issues, configHash: report.hash }; }),
   "capture-plan": action("Expand a named capture profile and device matrix without executing project commands.", { config: string, profile: string, screens: strings, output: string }, ["config"], (_store, input) => jsonFile(planCaptures(input), input.output)),
-  "capture-run": action("Execute an authorized browser capture plan at an exact Git revision.", captureProperties, ["repo", "ref", "config", "output", "execute"], (store, input, context) => captureRevision(store, executionOptions(input, context))),
+  "capture-run": action("Execute an authorized shared capture recipe at an exact Git revision.", captureProperties, ["repo", "ref", "config", "output", "execute"], (store, input, context) => captureRevision(store, executionOptions(input, context))),
   "routes-discover": action("Propose static Next.js, SvelteKit, and literal router screens from tracked source files; does not import or execute them.", { repo: string, ref: string, roots: strings, project: string, name: string, output: string }, ["repo"], (_store, input) => discoverRoutes(input)),
   "screens-affected": action("Map exact changed files, static imports, and workspace package dependencies to configured screen sources.", { repo: string, config: string, profile: string, base: string, head: string, output: string }, ["repo", "config", "base"], (_store, input) => affectedScreens(input)),
   "capture-changed": action("Capture only screens affected by source and workspace dependencies; unmapped screens remain included.", { ...captureProperties, base: string, head: string }, ["repo", "config", "base", "head", "output", "execute"], async (store, input, context) => {

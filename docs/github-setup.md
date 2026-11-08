@@ -1,21 +1,16 @@
 # GitHub setup
 
-Intended organization: `verdictan`. Repository: `verdictan/screens` (private).
-GitHub Projects title: `screens`.
-
-The bootstrap helper uses the authenticated GitHub CLI. It checks for an existing
-repository and project before creating either, then creates roadmap issues and
-adds them to the board. It is safe to rerun after a partial setup. It does not
-publish code, grant access, install credentials, or alter organization settings.
+The optional bootstrap helper targets `verdictan/screens` and a GitHub Project
+named `screens`. It uses the authenticated GitHub CLI:
 
 ```sh
 node scripts/bootstrap-github.mjs
 ```
 
-Requires repository creation permission and GitHub Projects write access.
-If the current token lacks Projects scope, an authorized user must update its
-access. The helper does not request or broaden credential permissions itself.
+It finds or creates the repository/project, creates missing issues from
+`project-backlog.json`, and adds them to the board. Reruns reuse existing records.
+Creation requires repository and Projects write access. The helper does not
+publish code, grant access, or change credential permissions.
 
-After creation, push the reviewed initial commit to the new repository. The
-first implementation milestone is tracked as in progress until live integration,
-browser QA and actual agent-client checks pass.
+The JSON file is a bootstrap issue template. Use the [Roadmap](roadmap.md) for
+current implementation and remaining release evidence.

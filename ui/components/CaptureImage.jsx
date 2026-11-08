@@ -8,12 +8,13 @@ export function CaptureImage({ capture, alt, onLoad, onError, onClick, style, lo
   const [failed, setFailed] = useState(null);
   const preview = capture.preview;
   useEffect(() => {
-    if (!preview?.thumbhash || !canvas.current) return;
-    const bytes = Uint8Array.from(atob(preview.thumbhash), (c) => c.charCodeAt(0));
-    const { w, h, rgba } = thumbHashToRGBA(bytes);
-    canvas.current.width = w;
-    canvas.current.height = h;
-    canvas.current.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
+    if (preview?.thumbhash) {
+      const bytes = Uint8Array.from(atob(preview.thumbhash), (c) => c.charCodeAt(0));
+      const { w, h, rgba } = thumbHashToRGBA(bytes);
+      canvas.current.width = w;
+      canvas.current.height = h;
+      canvas.current.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
+    }
   }, [preview?.thumbhash, capture.id]);
   useEffect(() => {
     if (image.current?.complete && image.current.naturalWidth) setLoaded(capture.id);

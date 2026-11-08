@@ -9,6 +9,7 @@ import { setImmediate as tick } from "node:timers/promises";
 import { fixture } from "./support/registry.mjs";
 import { moduleUnderTest } from "./support/module.mjs";
 import * as captureModule from "../src/capture.mjs";
+import * as automationModule from "../src/automation.mjs";
 async function cli(
   t,
   argv,
@@ -71,7 +72,6 @@ test("CLI help, argument errors and storage paths", async (t) => {
     ["projects", "--data", "--port"],
     ["unknown"],
     ["load"],
-    ["load", ".", "--project", "demo"],
     ["evidence"],
     ["serve", "--port", "-1"],
     ["serve", "--port", "65536"],
@@ -82,6 +82,10 @@ test("CLI help, argument errors and storage paths", async (t) => {
     assert.equal(r.process.exitCode, 1, argv.join(" "));
     assert.ok(r.errors.length);
   }
+  const project = mkdtempSync(join(tmpdir(), "screens-empty-project-"));
+  t.after(() => rmSync(project, { recursive: true, force: true }));
+  const imported = await cli(t, ["load", project, "--project", "demo"]);
+  assert.deepEqual({ run: JSON.parse(imported.stdout).run, importedScreens: JSON.parse(imported.stdout).importedScreens }, { run: null, importedScreens: 0 });
   for (const argv of [["projects"], ["list"]]) {
     const r = await cli(t, argv, { env: { SCREENS_HOME: "" } });
     assert.deepEqual(JSON.parse(r.stdout), []);
@@ -272,11 +276,12 @@ test("CLI server start, signals and listen errors close the registry", async (t)
       env,
       mocks: {
         "./server.mjs": { makeServer: () => server },
-        "./automation.mjs": { startAutomation: () => ({ stop: async () => { stopped++; } }) },
+        "./automation.mjs": { ...automationModule, startAutomation: () => ({ stop: async () => { stopped++; } }) },
       },
     });
     assert.match(r.logs[0], /4901/);
     r.events[env.PORT ? "SIGINT" : "SIGTERM"]();
+    r.events[env.PORT ? "SIGTERM" : "SIGINT"]();
     assert.equal(closed, 1);
     await tick();
     assert.equal(stopped, 1);
@@ -292,4 +297,9 @@ test("CLI server start, signals and listen errors close the registry", async (t)
   await tick();
   assert.equal(r.process.exitCode, 1);
   assert.equal(r.errors[0], "address busy");
+});
+
+
+test('CLI pixel region options reach the diff implementation',async t=>{
+ const f=await fixture(t),left=f.capture(),right=f.capture({role:'pr'});const result=await cli(t,['diff','--data',f.dir,'--left',left.id,'--right',right.id,'--region','{"x":0,"y":0,"width":1,"height":1}']);assert.equal(JSON.parse(result.stdout).region.width,1);
 });

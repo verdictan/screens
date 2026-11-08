@@ -2,41 +2,41 @@
   {
     "title": "Ship the local registry and review foundation",
     "status": "In Progress",
-    "body": "Implement SQLite storage, immutable captures/runs, imports, comparison picker, feedback and agent access.\n\nImplemented locally: registry, four import adapters, Current/Target/PR views, overlays, capture-bound notes, revision checks, direct stdio and HTTP MCP, CLI and skill source.\n\nAcceptance still required:\n- [ ] Run live HTTP/bridge integration on a loopback-enabled host.\n- [ ] Verify picker interactions and responsive layout in a browser.\n- [ ] Connect real Claude Code and Codex clients.\n- [ ] Review and merge the initial implementation."
+    "body": "Local registry and review are implemented. Remaining release evidence: installed packages, real agent sessions, and live-account behavior. See docs/roadmap.md."
   },
   {
     "title": "Capture exact PR revisions with project adapters",
     "status": "Todo",
-    "body": "Resolve PR head and merge base, prepare isolated builds and run approved capture recipes. Support browser, Electron native windows and iOS Simulator. Pin source, fixtures and environment. Do not execute repository commands during manifest import. Detect stale PR heads and preserve all evidence."
+    "body": "Shared recipes support exact revisions, browser capture, and Apple native capture. Remaining: non-Apple native adapters and native fixture adapters. Preserve immutable evidence and stale-head detection."
   },
   {
     "title": "Add versioned project configuration and coverage",
     "status": "Todo",
-    "body": "Define a validated screens configuration schema, stable screen/state mappings, source dependencies and reproducible recipes. Show missing states independently of successful captures. Support metadata updates and screen rename lineage."
+    "body": "Version 1 recipes, source relationships, readiness, and scoped coverage are implemented. Remaining: broader discovery, screen metadata updates, and rename lineage."
   },
   {
     "title": "Package and validate Screens skills for Claude and Codex",
     "status": "Todo",
-    "body": "Distribute the shared workflow with client-specific installation instructions and MCP setup. Forward-test load, compare and fix on real repositories. Preserve explicit evidence limitations and missing-capture reporting. Source skill exists in skills/screens; global installation is not yet performed."
+    "body": "Skills and client profiles are packaged. Remaining: real-client load, compare, and fix evidence. Keep workflow installation separate from model-session proof."
   },
   {
     "title": "Coordinate agents with expiring claims",
     "status": "Todo",
-    "body": "Add transactional issue claims, owner identity, expiry, renewal and conflict responses. Keep feedback updates revision-checked. Add bounded tool responses and pagination for large screen libraries."
+    "body": "Task claims, renewal, expiry, pagination, and scoped queries are implemented. Retain revision checks and ownership conflicts."
   },
   {
     "title": "Migrate review history and export portable reviews",
     "status": "Todo",
-    "body": "Import existing Kalkidan and Verdictan review notes without moving pins onto new images. Preserve unknown or missing historical captures explicitly. Add portable JSON export/import and deterministic versioned review bundles."
+    "body": "Portable bundles are implemented. Remaining: review-history migration and explicit reconfirmation when feedback moves to a new capture."
   },
   {
     "title": "Add visual differences and semantic verification evidence",
     "status": "Todo",
-    "body": "Generate lossless diff artifacts with equal-size alignment and explicit masks. Distinguish pixel differences from acceptance. Attach behavioral checks, motion evidence and accessibility review without claiming screenshots prove runtime behavior."
+    "body": "Pixel differences, semantic evidence, browser collectors, OCR, and CI reports are implemented. Remaining: richer motion playback and perceptual measures. Human acceptance stays separate."
   },
   {
     "title": "Add authenticated shared hosting and job dispatch",
     "status": "Todo",
-    "body": "Add authenticated people and agent identities, project-scoped authorization, reviewer-only approval enforcement, object storage, upload controls, retention and background capture jobs. Keep local v0.1 loopback-only until this boundary is implemented."
+    "body": "Local jobs and storage are implemented. Hosted operation still needs authenticated actors, project authorization, remote storage, and worker trust boundaries. Keep the service local until those exist."
   }
 ]

@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { takeCoverage } from "node:v8";
+import { after } from "node:test";
+
+const contexts = [];
+after(() => { takeCoverage(); contexts.length = 0; });
 export class Exit extends Error {
   constructor(code) {
     super(`exit ${code}`);
@@ -53,6 +57,7 @@ export async function moduleUnderTest(
     },
     ...globals,
   });
+  contexts.push(context);
   const url = pathToFileURL(resolve(file)).href;
   const cache = new Map();
   const dependency = async (specifier, ref) => {

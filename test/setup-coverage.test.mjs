@@ -134,8 +134,10 @@ test("installer writes all client connections and preserves existing project ins
     { SCREENS_PORT: "4901", PORT: "4902", SCREENS_HOME: join(dir, "registry") },
     { SCREENS_PORT: "", PORT: "4902" },
   ]) {
+    const environmentProject = join(dir, `app-${env.PORT}-${env.SCREENS_PORT}`);
+    fs.mkdirSync(environmentProject);
     r = await moduleUnderTest("scripts/install-skills.mjs", {
-      argv: ["--project", join(dir, `app-${env.PORT}-${env.SCREENS_PORT}`)],
+      argv: ["--project", environmentProject],
       env,
     });
     assert.equal(r.error, undefined);

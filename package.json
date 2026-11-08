@@ -14,7 +14,7 @@
     "dev": "node scripts/dev.mjs",
     "start": "node src/cli.mjs serve",
     "test": "node --experimental-vm-modules --test test/*.test.mjs",
-    "test:integration": "node --test test/network.integration.mjs test/headless.integration.mjs",
+    "test:integration": "node --test test/*.integration.mjs",
     "check": "node scripts/check.mjs",
     "skills:install": "node scripts/install-skills.mjs",
     "skills:package": "node scripts/package-skills.mjs",
@@ -25,7 +25,7 @@
     "test:all": "npm run check && npm run test:coverage",
     "pretest": "npm run build",
     "setup": "node scripts/setup.mjs",
-    "test:coverage": "vite build --mode coverage && c8 node --experimental-vm-modules --test test/*.test.mjs test/network.integration.mjs && playwright test test/e2e/workflow.spec.mjs test/e2e/theme.spec.mjs",
+    "test:coverage": "vite build --mode coverage && c8 node --experimental-vm-modules --test test/*.test.mjs test/*.integration.mjs && playwright test",
     "postinstall": "node scripts/bundle-runtime.mjs",
     "runtime:install": "node scripts/bundle-runtime.mjs",
     "release:package": "node scripts/package-release.mjs"
@@ -51,6 +51,7 @@
     "tailwind-merge": "3.7.0",
     "tesseract.js": "7.0.0",
     "thumbhash": "0.1.1",
+    "typescript": "5.9.3",
     "vaul": "1.1.2"
   },
   "devDependencies": {

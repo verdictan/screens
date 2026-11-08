@@ -58,12 +58,14 @@ function repository(directory) {
 function recipe(directory, browsers = ["chromium"]) {
   const config = join(directory, "capture.json");
   writeFileSync(config, JSON.stringify({
-    schemaVersion: 1, adapter: "browser", project: { id: "demo", name: "Demo" },
+    version: 1, scope: "configured", project: { id: "demo", name: "Demo" },
+    applications: [{ path: ".", adapter: "browser", ready: "#save",
     fixture: "test-v1", serve: [process.execPath, "server.mjs"],
     browsers, variants: [{ device: "desktop", width: 800, height: 600 }],
     evidence: { dom: true, accessibility: true, console: true, network: true, fonts: true },
-    screens: [{ key: "home", title: "Home", path: "/", source: "server.mjs",
+    scenarios: [{ key: "home", title: "Home", path: "/", source: "server.mjs",
       annotations: [{ selector: "#save", text: "Check the save action" }] }],
+    }],
   }));
   return config;
 }
@@ -238,7 +240,7 @@ test("bundled Git powers route discovery and source dependency selection", async
   const discovered = await run(store, "routes-discover", { repo, project: "demo" });
   assert.equal(discovered.screens[0].path, "/account");
   const config = recipe(directory), value = JSON.parse(readFileSync(config));
-  value.screens = [
+  value.applications[0].scenarios = [
     { key: "account", title: "Account", path: "/account", source: "src/app/account/page.jsx" },
     { key: "home", title: "Home", path: "/", source: "server.mjs" },
   ];

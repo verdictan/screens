@@ -9,7 +9,7 @@ importing a manifest does not run collectors.
 
 ## Browser evidence
 
-Add `evidence` to a browser capture configuration:
+Add `evidence` inside a browser application in `screens.capture.json`:
 
 ```json
 {
@@ -18,14 +18,7 @@ Add `evidence` to a browser capture configuration:
     "console": true,
     "network": true,
     "fonts": true,
-    "accessibility": {
-      "options": {
-        "runOnly": {
-          "type": "tag",
-          "values": ["wcag2a", "wcag2aa"]
-        }
-      }
-    },
+    "accessibility": {"options": {"runOnly": {"type": "tag", "values": ["wcag2a", "wcag2aa"]}}},
     "selectors": [
       "[data-testid=checkout-total]",
       {
@@ -38,8 +31,8 @@ Add `evidence` to a browser capture configuration:
 }
 ```
 
-Collectors run before the screenshot. They are off unless selected. Their data is
-stored with the resulting capture ID:
+Collectors run before the screenshot and bind their data to its capture ID.
+Fonts are enabled by default; other optional collectors need explicit settings:
 
 - `dom`: URL, title, and serialized HTML. HTML remains evidence data; Screens does
   not serve it as an application page.
@@ -87,9 +80,7 @@ screenshots use document coordinates. Off-screen regions cannot become comments.
 
 ## OCR and copy changes
 
-Screens includes Tesseract.js, its WebAssembly engine, and the English language
-model. OCR runs locally through the CLI, MCP, or HTTP API. It needs no separate
-OCR installation, service, or runtime download:
+OCR uses the bundled English model locally through CLI, MCP, or HTTP:
 
 ```sh
 screens ocr_extract --capture CAPTURE_ID --language eng --psm 3
@@ -97,10 +88,8 @@ screens ocr_search --query 'Create account' --project PROJECT_ID
 screens text_compare --left BEFORE_CAPTURE --right AFTER_CAPTURE
 ```
 
-`ocr_extract` supports the bundled English model (`eng`). It decodes and orients
-the registered image with Sharp and passes the PNG bytes to an internal worker
-thread. The worker, WASM core, and model load from installed package files; OCR
-does not contact a CDN or write a model cache. The worker stops after the operation.
+Sharp decodes the registered image. A package-local worker runs OCR and stops
+after the operation, with no CDN access or model cache.
 
 Segmentation modes 3–11 and 13 are available. Modes that need a separate orientation
 model are excluded. Records contain the engine version, model, segmentation mode,
@@ -163,7 +152,7 @@ A contract checks the capture's fixture name and its recorded fixture metadata:
     "name": "checkout-fixture",
     "version": "2026-11",
     "required": ["customer.id", "cart.items"],
-    "equals": { "currency": "EUR", "cart.items": 3 }
+    "equals": {"currency": "EUR", "cart.items": 3}
   }
 }
 ```

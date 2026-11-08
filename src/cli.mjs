@@ -3,11 +3,14 @@ import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { draftAutomaticPlan } from "./automatic-plan.mjs";
+import { captureSummary, formatCaptureSummary } from "./capture-summary.mjs";
+import { detectProject } from "./discovery.mjs";
 import { Store } from "./store.mjs";
-import { startAutomation } from "./automation.mjs";
+import { startAutomation, runAutomaticJob } from "./automation.mjs";
 import { makeServer } from "./server.mjs";
 import { protocol } from "./mcp.mjs";
-import { discover, importManifest, combineRuns } from "./import.mjs";
+import { importManifest, combineRuns } from "./import.mjs";
 import { headlessActions, actionCatalog, runHeadless } from "./headless.mjs";
 import { createDiff } from "./diff.mjs";
 import {
@@ -54,6 +57,11 @@ const help = `Screens — central screen evidence and review
   screens diff --left CAPTURE --right CAPTURE [--threshold 0] [--masks FILE]
   screens evidence add FILE
   screens evidence list --capture CAPTURE
+  screens capture-draft PATH [--output plan.json]
+  screens capture-auto PATH [--project ID] [--config screens.capture.json | --plan plan.json]
+  screens capture-auto PATH --queue yes
+  screens capture-auto --resume JOB [--format json]
+  screens detect PATH
   screens load PATH --project ID [--name NAME] [--title TITLE]
   screens projects
   screens list --project ID
@@ -78,6 +86,12 @@ async function main() {
     command = p[0];
   if (!command || ["help", "-h"].includes(command))
     return process.stdout.write(help);
+  if (command === "capture-draft") {
+    const plan = draftAutomaticPlan(p[1] || ".", o);
+    if (o.output) writeFileSync(resolve(o.output), JSON.stringify(plan, null, 2) + "\n", { flag: "wx" });
+    return print(o.output ? { output: resolve(o.output), choices: plan.choices.length, backlog: plan.discovery.backlog.length, decisions: plan.decisions.length, blockers: plan.decisions.filter(decision => decision.blocking).length } : plan);
+  }
+  if (command === "detect") return print(detectProject(p[1] || "."));
   if (command === "headless-help") {
     const actions = actionCatalog(true);
     return print(p[1] ? actions.find((action) => action.name === p[1]) || { error: "Unknown action" } : actions);
@@ -209,6 +223,17 @@ async function main() {
         if (!controller.signal.aborted) throw error;
         process.exitCode = 130;
       } finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
+    } else if (command === "capture-auto" || (command === "load" && o.capture === "yes")) {
+      const controller = new AbortController();
+      const stop = () => controller.abort(Error("Capture interrupted"));
+      process.once("SIGINT", stop); process.once("SIGTERM", stop);
+      try {
+        const result = await runAutomaticJob(store, { ...o, screens: o.screens ? JSON.parse(o.screens) : undefined, path: p[1] || (o.resume ? undefined : "."), signal: controller.signal,
+          onEvent: event => process.stderr.write(JSON.stringify(event) + "\n") });
+        if (o.format === "json") print(result);
+        else process.stdout.write(formatCaptureSummary(result.summary || captureSummary(result)));
+        process.exitCode = result.exitCode;
+      } finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
     } else if (command === "serve") {
       const port = Number(o.port || process.env.PORT || 4800);
       if (!Number.isInteger(port) || port < 0 || port > 65535)
@@ -272,15 +297,15 @@ async function main() {
       print(store.search({ project: o.project, query: o.query || "" }));
     else if (command === "load") {
       if (!p[1] || !o.project) throw new Error("Use load PATH --project ID");
-      const paths = p[1].endsWith(".json") ? [resolve(p[1])] : discover(p[1]);
-      if (!paths.length)
-        throw new Error(
-          "No supported manifest found. Create screens.json from examples/screens.json.",
-        );
+      const detection = p[1].endsWith(".json") ? null : detectProject(p[1]);
+      const paths = detection ? detection.manifests.map(file => resolve(p[1], file)) : [resolve(p[1])];
+      if (!paths.length) return print({ detection, importedScreens: 0, run: null, url: null,
+        warnings: ["No supported manifest found. Prepare captures and screens.json before importing."] });
       for (const file of paths) {
         const result = importManifest(store, file, o);
         print({
           ...result,
+          ...(detection ? { detection } : {}),
           url: result.run
             ? `http://127.0.0.1:${o.port || process.env.PORT || 4800}/?project=${encodeURIComponent(result.project.id)}&run=${result.run.id}`
             : null,

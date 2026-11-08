@@ -1,3 +1,6 @@
+import { Worker } from "node:worker_threads";
+import { automaticInput } from "./automatic-plan.mjs";
+import { captureSummary } from "./capture-summary.mjs";
 import { randomUUID, createHash } from "node:crypto";
 import { existsSync, accessSync, constants, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
@@ -6,7 +9,8 @@ import { createConnection } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { requireThat, text, choice } from "./validation.mjs";
 import { bundledGit, captureBrowser } from "./runtime.mjs";
-import { captureConfig, captureRevision, resolveRevision } from "./capture.mjs";
+import { captureConfig } from "./capture-recipe.mjs";
+import { captureRevision, resolveRevision } from "./capture.mjs";
 
 const now = () => new Date().toISOString();
 const parse = (row) => row ? JSON.parse(row.data) : null;
@@ -170,7 +174,7 @@ function leaseJob(store, input) {
   return store.transaction(() => {
     const job = store.db.prepare("SELECT data FROM capture_jobs ORDER BY rowid").all().map(parse).find((job) =>
       (job.status === "queued" || job.status === "running" && Date.parse(job.leaseUntil) <= Date.now()) &&
-      (!input.project || job.config.project.id === input.project));
+      (!input.id || job.id === input.id) && (job.kind !== "automatic" || existsSync(job.repo)));
     if (!job) return null;
     Object.assign(job, { worker: text(input.worker, "worker"), token: randomUUID(), status: "running", leaseUntil: new Date(Date.now() + 60000).toISOString(), attempts: job.attempts + 1, revision: job.revision + 1, updatedAt: now() });
     save(store, "capture_jobs", job); jobEvent(store, job.id, "job.started", { worker: job.worker, attempt: job.attempts }); return job;
@@ -287,9 +291,100 @@ async function scheduler(store, input, context) {
   do {
     const results = await tickSchedules(store, input, context);
     for (const result of results) context.emit?.({ type: "schedule.result", ...result });
-    if (input.once) return { results };
     await delay(1000, undefined, { signal: context.signal });
   } while (!context.signal?.aborted);
+}
+
+function enqueueAutomatic(store, input) {
+  requireThat(input.execute === "yes", "Pass execute=yes to queue automatic capture");
+  const prepared = automaticInput(input.path || ".", input);
+  const project = { id: input.project || prepared.config.project?.id || prepared.root.split(/[\\/]/).at(-1).replace(/[^a-zA-Z0-9._-]/g, "-"), name: prepared.config.project?.name || prepared.root.split(/[\\/]/).at(-1) };
+  const options = Object.fromEntries(["path", "config", "plan", "project", "profile", "title", "url", "output", "port", "screens"].filter(key => input[key] !== undefined).map(key => [key, input[key]]));
+  options.path = prepared.root; options.project = project.id;
+  for (const key of ["config", "plan", "output"]) if (options[key]) options[key] = resolve(options[key]);
+  return store.transaction(() => {
+    const job = enqueuePrepared(store, { kind: "automatic", repo: prepared.root, ref: prepared.inputHash, configHash: prepared.inputHash, config: { project }, auto: { options }, checkpoints: {} }, { title: input.title || "Automatic capture" });
+    return job;
+  });
+}
+export async function executeAutomaticLease(store, job, signal, onEvent) {
+  const { captureAutomatic } = await import("./auto-capture.mjs");
+  const result = await captureAutomatic(store, { ...job.auto.options, expectedInputHash: job.configHash,
+    output: job.auto.options.output ? join(job.auto.options.output, `attempt-${job.attempts}`) : undefined,
+    execute: "yes", signal, priorCheckpoints: Object.values(job.checkpoints || {}), job: job.id,
+    assertOwnership() { ownedJob(store, { id: job.id, token: job.token }); },
+    onEvent(event) { ownedJob(store, { id: job.id, token: job.token }); jobEvent(store, job.id, "job.progress", { event }); onEvent?.(event); },
+    onCheckpoint(value) {
+      store.transaction(() => {
+        const current = ownedJob(store, { id: job.id, token: job.token });
+        const capture = store.getCapture(value.captureId);
+        requireThat(store.getScreen(capture.screen).project === current.config.project.id, "Capture does not belong to this job");
+        if (!current.captures.includes(capture.id)) current.captures.push(capture.id);
+        (current.checkpoints ||= {})[value.identity] = value;
+        current.revision++; current.updatedAt = now(); save(store, "capture_jobs", current);
+        jobEvent(store, job.id, "job.checkpoint", { identity: value.identity, capture: capture.id, readiness: value.readiness.status });
+      });
+    } });
+  if (signal?.aborted) return result;
+  store.transaction(() => {
+    const current = ownedJob(store, { id: job.id, token: job.token });
+    current.status = result.exitCode ? "failed" : "completed"; current.error = result.exitCode ? result.error || "Capture coverage or readiness is incomplete" : null;
+    current.result = result.run?.id || null; current.report = { output: result.output, summary: captureSummary(result) };
+    current.revision++; current.updatedAt = now(); current.token = null; current.leaseUntil = null;
+    save(store, "capture_jobs", current); jobEvent(store, job.id, `job.${current.status}`, { run: current.result });
+  });
+  return result;
+}
+function automaticAttempt(store, job, signal, onEvent) {
+  const thread = new Worker(new URL("./automatic-worker.mjs", import.meta.url), { workerData: { directory: store.directory, job } });
+  const abort = () => { try { thread.postMessage({ type: "abort", reason: signal?.reason?.message || "Capture interrupted" }); } catch {} };
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    thread.on("message", message => {
+      if (message.type === "event") {
+        try { onEvent?.(message.event); } catch (error) { reject(error); abort(); }
+      }
+      if (message.type === "result") { completed = true; resolve(message.result); }
+      if (message.type === "error") { completed = true; const error = Error(message.message); error.status = message.status; reject(error); }
+    });
+    thread.once("error", reject);
+    thread.once("exit", code => { if (!completed) reject(Error(`Automatic capture worker exited (${code})`)); });
+  }).finally(() => signal?.removeEventListener("abort", abort));
+}
+export async function runAutomaticJob(store, input) {
+  let job;
+  if (input.resume) {
+    job = get(store, "capture_jobs", input.resume);
+    requireThat(job.kind === "automatic", "Resume requires an automatic capture job");
+    for (const key of ["path", "config", "plan", "project", "profile", "url", "screens"]) if (input[key] !== undefined) {
+      const value = ["path", "config", "plan"].includes(key) ? resolve(input[key]) : input[key];
+      requireThat(JSON.stringify(value) === JSON.stringify(job.auto.options[key]), `Resume uses frozen ${key}; create a new job to change it`);
+    }
+    requireThat(job.status !== "running" || Date.parse(job.leaseUntil) <= Date.now(), "Job already has an active worker", 409);
+    changeJob(store, { id: job.id, expectedRevision: input.expectedRevision === undefined ? job.revision : Number(input.expectedRevision), resume: true });
+  } else job = enqueueAutomatic(store, { ...input, execute: "yes" });
+  if (input.queue === "yes") return { status: "queued", job: job.id, exitCode: 0 };
+  job = leaseJob(store, { id: job.id, worker: `screens-cli-${process.pid}` });
+  requireThat(job, "Job was leased by another worker", 409);
+  const controller = new AbortController();
+  const abort = () => controller.abort(input.signal.reason);
+  input.signal?.addEventListener("abort", abort, { once: true });
+  if (input.signal?.aborted) abort();
+  const timer = setInterval(() => { try { heartbeat(store, { id: job.id, token: job.token }); } catch (error) { controller.abort(error); } }, 1000);
+  let result;
+  try {
+    result = await automaticAttempt(store, job, controller.signal, input.onEvent);
+    if (controller.signal.aborted) {
+      const current = get(store, "capture_jobs", job.id);
+      if (current.token === job.token) changeJob(store, { id: job.id, expectedRevision: current.revision, resume: false });
+    }
+  } catch (error) {
+    try { finishJob(store, { id: job.id, token: job.token, error: error.message }); } catch (stateError) { if (stateError.status !== 409) throw stateError; }
+    throw error;
+  } finally { clearInterval(timer); input.signal?.removeEventListener("abort", abort); }
+  return result;
 }
 
 async function worker(store, context) {
@@ -297,7 +392,7 @@ async function worker(store, context) {
     const job = leaseJob(store, { worker: `screens-${process.pid}` });
     if (!job) { await delay(1000, undefined, { signal: context.signal }); continue; }
     const controller = new AbortController();
-    const abort = () => controller.abort(context.signal.reason || Error("Screens stopped"));
+    const abort = () => controller.abort(context.signal.reason);
     context.signal.addEventListener("abort", abort, { once: true });
     const temp = mkdtempSync(join(tmpdir(), "screens-job-"));
     let leaseError;
@@ -306,15 +401,22 @@ async function worker(store, context) {
       catch (error) { leaseError = error; controller.abort(error); }
     }, 1000);
     try {
+      if (job.kind === "automatic") {
+        await automaticAttempt(store, job, controller.signal, context.emit);
+        if (controller.signal.aborted) controller.signal.throwIfAborted();
+        continue;
+      }
       const configFile = join(temp, "capture.json"); writeFileSync(configFile, JSON.stringify(job.config));
       requireThat(captureConfig(configFile).hash === job.configHash, "Queued capture configuration changed");
       const result = await captureRevision(store, {
         repo: job.repo, ref: job.ref, config: configFile, output: join(temp, "output"), role: job.role,
-        execute: "yes", priorCaptureIds: job.captures, signal: controller.signal,
+        execute: "yes", priorCheckpoints: Object.values(job.checkpoints || {}), signal: controller.signal,
+        assertOwnership: () => ownedJob(store, { id: job.id, token: job.token }),
+        onCheckpoint: value => { store.transaction(() => { const current = ownedJob(store, { id: job.id, token: job.token }); (current.checkpoints ||= {})[value.identity] = value; current.revision++; current.updatedAt = now(); save(store, "capture_jobs", current); }); },
         onEvent: (event) => { ownedJob(store, { id: job.id, token: job.token }); jobEvent(store, job.id, "job.progress", { event }); },
         onCapture: ({ capture }) => checkpoint(store, { id: job.id, token: job.token, capture: capture.id }),
       });
-      finishJob(store, { id: job.id, token: job.token, run: result.run.id });
+      finishJob(store, { id: job.id, token: job.token, run: result.run?.id, error: result.exitCode ? result.error || "Capture is incomplete; inspect report.json" : undefined });
     } catch (error) {
       if (!leaseError) {
         try {
@@ -382,6 +484,7 @@ export const automationActions = {
   "tasks-handoff": action("Retrieve capture-bound feedback and supporting evidence for an agent handoff.", { id: string }, ["id"], taskHandoff),
   "registry-page": action("Retrieve a bounded page of screens, captures, notes, runs, evidence, or reviewSets.", { collection: string, project: string, screen: string, capture: string, cursor: string, limit: integer }, ["collection"], listPage),
   "evidence-scoped": action("Retrieve evidence for exact captures, a run, or a review set, optionally scoped to a region.", { capture: string, run: string, reviewSet: string, region: { type: "object" } }, [], scopedEvidence),
+  "jobs-enqueue-auto": action("Queue an authorized automatic capture plan with persistent scenario checkpoints.", { path: string, config: string, plan: string, project: string, profile: string, screens: { type: "array", items: string }, title: string, execute: string, output: string }, ["path", "execute"], enqueueAutomatic, true),
   "jobs-enqueue": action("Queue an explicitly authorized capture recipe at a resolved commit.", captureInput, ["repo", "config", "execute"], enqueue, true),
   "jobs-list": action("List persistent capture jobs.", { status: string }, [], (store, input) => store.db.prepare("SELECT data FROM capture_jobs ORDER BY rowid DESC").all().map(parse).filter((job) => !input.status || job.status === input.status)),
   "jobs-get": action("Read a capture job and its current revision.", { id: string }, ["id"], (store, input) => get(store, "capture_jobs", input.id)),

@@ -30,8 +30,8 @@ screens ACTION --input action.json --data ./registry
 
 Direct flags override fields from `--input`. Commands use the registry selected
 by `--data` or `SCREENS_HOME`. Commands that read recipe files and execute project
-code remain CLI-only. Capture execution requires `--execute yes`; import,
-planning, and discovery do not execute project commands.
+code remain CLI-only. Execution actions require `--execute yes`; `capture-auto` is itself an explicit
+execution request. Import, planning, and discovery do not execute project commands.
 
 Registry operations use the same service through MCP and
 `POST /api/automation/ACTION`. File import/export, signing, and storage
@@ -39,21 +39,19 @@ administration remain local CLI operations.
 
 ## Capture automation
 
-Screens includes Git and manages Chromium, Firefox, and WebKit. The normal
-installation supplies all three browser engines. On supported Linux systems,
-the installer also installs their required system libraries using normal
-operating-system permissions. Users do not install Git or run a separate browser installation
-command. Capture recipes still describe how to start the application
-being captured.
+Use [Automatic capture](automatic-capture.md) for setup and
+[Capture recipes](capture-automation.md) for exact revisions.
 
 | Capability | Command or configuration |
 | --- | --- |
+| Draft automatic plans | `capture-draft PATH` proposes recipes, evidence and unresolved decisions without executing the project. |
+| Automatic jobs | `capture-auto` runs with persistent checkpoints; `jobs-enqueue-auto` queues a working-tree plan and `capture-auto --resume JOB` resumes it. |
 | Environment diagnostics | `doctor` reports the installed runtime, browsers, registry access, and optional port status. |
 | Configuration diagnostics | `capture-config-diagnose` reports field paths and corrections. |
 | Profiles and matrices | `capture-plan` expands named profiles and combinations of browsers, devices, themes, locales, and text scales. |
 | Browser capture | `capture-run` captures an exact Git revision using the configured managed browser engines. |
 | Repeatable fixtures | `determinism` sets time, random seed, timezone, and fixture metadata. |
-| Readiness | `readiness` waits for selectors, application events, and fonts. |
+| Readiness | Application/scenario `ready` waits for selectors, application events, and fonts. |
 | Animation timing | `animationTime` pauses supported page animations at the specified timestamp. |
 | Network replay | `network.har` reads a recording from the repository. |
 | Environment records | Captures retain browser, runtime, and rendering settings as derived evidence. |
@@ -70,9 +68,7 @@ included in changed-screen capture selection.
 
 ## Evidence and reports
 
-OCR uses the bundled WebAssembly engine and English language model. It works
-locally without a Tesseract installation or a model download during recognition.
-Accessibility scanning uses the axe-core package included with Screens.
+See [Evidence tools](headless-evidence.md) for collector settings and schemas.
 
 | Capability | Command or configuration |
 | --- | --- |
@@ -96,7 +92,7 @@ verify fixes. Those remain human decisions.
 Queue an authorized recipe while Screens is running:
 
 ```sh
-screens jobs-enqueue --repo ./app --config ./capture.json --ref HEAD --execute yes
+screens jobs-enqueue --repo ./app --config ./screens.capture.json --ref HEAD --execute yes
 screens jobs-list
 screens jobs-get --id JOB_ID
 screens jobs-events --id JOB_ID --after 0
@@ -104,8 +100,7 @@ screens jobs-watch --id JOB_ID --after 0
 ```
 
 Screens runs the job locally. It retains the resolved recipe, exact revision,
-completed captures, and progress events. Interrupted jobs resume from their saved
-captures. `jobs-watch` prints one JSON event per line and stops when the job
+completed captures, and progress events. Resume follows the [checkpoint reuse rules](automatic-capture.md#automatic-capture-jobs-and-resume). `jobs-watch` prints one JSON event per line and stops when the job
 completes, fails, or is cancelled. Continue from the last event ID with `--after`.
 
 Read the latest job revision before cancelling or resuming a job:
@@ -122,7 +117,7 @@ Capture schedules use the same local service:
   "kind": "capture",
   "title": "Nightly checkout",
   "repo": "/path/to/app",
-  "config": "/path/to/capture.json",
+  "config": "/path/to/screens.capture.json",
   "ref": "main",
   "profile": "checkout",
   "everySeconds": 86400,
@@ -184,15 +179,4 @@ lines; use the last event ID as `--after` when reconnecting.
 | Managed signatures | `bundle-sign`, `signature-verify` |
 | Public signing identities | `signing-key-export`, `signing-key-trust` |
 
-Screens creates its signing identity when first used. Bundles and backups contain
-local evidence and can be copied as ordinary files. Storage does not require a
-bucket, remote worker, webhook receiver, or other service.
-
-## Detailed references
-
-- [Capture automation](capture-automation.md): recipes, profiles, matrices,
-  source mapping, repeatability, and regression search.
-- [Evidence and reports](headless-evidence.md): bundled OCR, observations,
-  annotations, fixture contracts, measurements, and CI formats.
-- [Storage tools](storage-tools.md): bundles, backups, restore, retention, and
-  managed signatures.
+See [Storage](storage-tools.md) for bundle contents, restore, retention, and trust rules.

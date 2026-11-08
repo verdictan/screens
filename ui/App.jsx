@@ -202,7 +202,7 @@ export function App() {
                   title={`${item.title} · ${item.variant.device} · ${item.variant.theme} · ${item.variant.locale} · ${item.variant.viewport}`}
                   aria-current={entryKey(item) === entryKey(entry) ? "page" : undefined}
                   onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); select(item); }}>
-                  <span className="library-thumbnail" aria-hidden="true">{preview ? <CaptureImage capture={preview} alt="" loading="lazy" /> : <Images />}</span>
+                  <span className="library-thumbnail" aria-hidden="true"><CaptureImage capture={preview} alt="" loading="lazy" /></span>
                   <span className="screen-label"><strong>{item.title}</strong><span>{item.variant.device} · {item.variant.theme}{item.state && item.state !== "default" ? ` · ${item.state}` : ""}</span></span>
                   <span className={cn("screen-state", item.openNotes > 0 ? "has-feedback" : item.targetApproval && "is-approved")} title={item.openNotes ? `${item.openNotes} open feedback` : item.targetApproval ? "Design approved" : "Awaiting review"}>
                     {item.openNotes > 0 ? item.openNotes : item.targetApproval ? <Check aria-label="Design approved" /> : <span className="status-dot" aria-label="Awaiting review" />}
@@ -232,7 +232,7 @@ export function App() {
             <span className="icon-swap" data-swapped={mobile ? !menu : collapsed} aria-hidden="true"><PanelLeftClose className="icon-first" /><PanelLeftOpen className="icon-second" /></span>
           </Button>
           <a href="/" data-review-link className="wordmark"><Layers aria-hidden="true" /><span>Screens</span></a>
-          {projects.data?.length > 0 && <NativeSelect className="project-picker" aria-label="Project" value={project?.id || ""}
+          {projects.data?.length > 0 && <NativeSelect className="project-picker" aria-label="Project" value={project.id}
             onChange={(event) => { const id = event.target.value; changeView(() => { setProjectId(id); setRunId(""); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
             {projects.data.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
           </NativeSelect>}
@@ -265,7 +265,7 @@ export function App() {
             <p className="welcome-note">Screens keeps the originals and your feedback on this computer.</p>
             <Collapsible className="welcome-manual"><CollapsibleTrigger>Use an installed command instead</CollapsibleTrigger><CollapsibleContent><code>/screens load /path/to/project</code><p>Use <code>$screens</code> in Codex. Replace the path with your app's folder.</p></CollapsibleContent></Collapsible>
           </section>}
-          {loading && <Review loading skeletonVisible={skeletonVisible} tab="compare" setTab={() => {}} focused={focused} setFocused={setFocused}
+          {loading && <Review loading skeletonVisible={skeletonVisible} tab="compare" setTab={showPage} focused={focused} setFocused={setFocused}
             run={run || { warnings: [] }}
             entry={entry || { title: "Screen title", screen: "loading", variant: { device: "desktop", theme: "light", viewport: "unspecified", locale: "en" }, captures: { current: { id: "loading-current", revision: "loading", variant: { viewport: "720x480" } }, target: { id: "loading-target", revision: "loading", variant: { viewport: "720x480" } } } }}
             detail={{ captures: [], notes: [], targets: [], evidence: [] }} />}

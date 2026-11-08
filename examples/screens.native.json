@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "applications": [
+    {
+      "path": "MyApp.xcodeproj",
+      "scheme": "MyApp",
+      "platforms": ["macos", "iphone", "ipad"],
+      "defaultProfile": "demo",
+      "profiles": {
+        "demo": {
+          "fixture": "demo-v1",
+          "args": ["--fixture", "demo"],
+          "env": { "SCREENS_DEMO_MODE": "1" }
+        }
+      },
+      "screens": [
+        {
+          "id": "home",
+          "title": "Home",
+          "args": ["--screen", "home"],
+          "readOnly": true,
+          "readiness": {
+            "file": "Documents/screens-ready.json",
+            "platforms": { "macos": { "file": "{output}/native-ready.json" } }
+          }
+        },
+        {
+          "id": "settings",
+          "title": "Settings",
+          "args": ["--screen", "settings"],
+          "readOnly": true,
+          "readiness": {
+            "file": "Documents/screens-ready.json",
+            "platforms": { "macos": { "file": "{output}/native-ready.json" } }
+          }
+        }
+      ]
+    }
+  ]
+}

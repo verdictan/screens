@@ -18,6 +18,15 @@ function localImage(base, file) {
   return readFileSync(path);
 }
 
+export function manifestCaptures(filename) {
+  const path = resolve(filename), data = JSON.parse(readFileSync(path, "utf8"));
+  requireThat(data.schemaVersion === 1 && Array.isArray(data.screens), "Capture commands must emit a schemaVersion 1 screenshot manifest");
+  return data.screens.flatMap(screen => {
+    requireThat(Array.isArray(screen.captures), "Each manifest screen needs captures");
+    return screen.captures.map(capture => ({ screen, capture, bytes: localImage(dirname(path), capture.file) }));
+  });
+}
+
 export function discover(projectPath) {
   const root = resolve(projectPath);
   const candidates = [

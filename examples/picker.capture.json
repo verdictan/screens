@@ -1,11 +1,62 @@
 {
-  "schemaVersion": 1,
-  "adapter": "browser",
-  "project": { "id": "screens-picker", "name": "Screens picker" },
-  "fixture": "screens-picker-proof-seed-1",
-  "prepare": [["npm", "ci"], ["npm", "run", "build", "--if-present"], ["node", "{runtime}/scripts/seed-proof.mjs"]],
-  "serve": ["node", "src/cli.mjs", "serve"],
-  "readyPath": "/api/health",
-  "variants": [{ "device": "desktop", "width": 1440, "height": 1000, "theme": "light", "locale": "en" }, { "device": "phone", "width": 390, "height": 844, "theme": "light", "locale": "en" }],
-  "screens": [{ "key": "review", "title": "Review workspace", "path": "/", "ready": "#review", "fullPage": true }]
+  "version": 1,
+  "scope": "configured",
+  "project": {
+    "id": "screens-picker",
+    "name": "Screens picker"
+  },
+  "applications": [
+    {
+      "path": ".",
+      "adapter": "browser",
+      "fixture": "screens-picker-proof-seed-1",
+      "prepare": [
+        [
+          "npm",
+          "ci"
+        ],
+        [
+          "npm",
+          "run",
+          "build",
+          "--if-present"
+        ],
+        [
+          "node",
+          "{runtime}/scripts/seed-proof.mjs"
+        ]
+      ],
+      "serve": [
+        "node",
+        "src/cli.mjs",
+        "serve"
+      ],
+      "readyPath": "/api/health",
+      "variants": [
+        {
+          "device": "desktop",
+          "width": 1440,
+          "height": 1000,
+          "theme": "light",
+          "locale": "en"
+        },
+        {
+          "device": "phone",
+          "width": 390,
+          "height": 844,
+          "theme": "light",
+          "locale": "en"
+        }
+      ],
+      "scenarios": [
+        {
+          "key": "review",
+          "title": "Review workspace",
+          "path": "/",
+          "ready": "#review",
+          "fullPage": true
+        }
+      ]
+    }
+  ]
 }

@@ -1,192 +1,148 @@
 # Architecture
 
-## Ownership
+Screens uses one local SQLite registry for the UI, CLI, and MCP. WAL and a busy
+timeout coordinate writers. Mutable records use transactions and expected
+revisions; stale updates return HTTP 409.
 
-`src/store.mjs` owns domain rules and SQLite persistence. `src/server.mjs` owns
-loopback HTTP and static serving. `src/mcp.mjs` exposes a deliberately small MCP
-surface. `src/import.mjs` adapts project evidence. `src/cli.mjs` composes these
-operations. `ui/` contains the React review interface, shadcn primitives and Tailwind styling. Vite builds `dist/ui/`, which the same HTTP server serves.
+## Modules
 
-There is one database, not one JSON review file per browser. Direct stdio clients
-open the same database. WAL and a busy timeout coordinate writers across processes.
-Feedback and target changes use transactions plus explicit expected revisions.
+| Area | Owner |
+| --- | --- |
+| Domain rules and persistence | `src/store.mjs` |
+| Loopback HTTP and static UI | `src/server.mjs` |
+| MCP transport and registry tools | `src/mcp.mjs` |
+| Manifest adapters | `src/import.mjs` |
+| Local commands | `src/cli.mjs` |
+| Shared action catalog | `src/headless.mjs` |
+| Jobs, schedules, and task claims | `src/automation.mjs` |
+| Derived evidence and CI reports | `src/evidence-tools.mjs` |
+| Bundles, backups, retention, and signing | `src/storage-tools.mjs` |
+| Package-local Git and browser engines | `src/runtime.mjs` |
+| React UI and shadcn controls | `ui/` |
+
+Vite builds `dist/ui/`; the HTTP server serves that build. Standard controls use
+shadcn, Radix, cmdk, and Vaul. Screenshot rendering and annotation geometry use
+custom React components.
 
 ## Data model
 
-- Project: stable key, display name, optional repository identity.
-- Screen: project plus stable external key; a screen entry represents a state.
-  Platform-specific legacy keys are preserved. Cross-platform logical grouping is
-  future work rather than an inferred mapping.
-- Variant: device, theme, viewport, locale, text scale and browser.
-- Capture: screen, variant, role, source revision, fixture, provenance and hash.
-  Metadata and image bytes determine the ID. Captures cannot be overwritten.
-- Run: a frozen set of capture IDs, with at most one role per screen/variant.
-- Note: immutable capture anchor, optional normalized point or rectangular region, text, status,
-  revision, resolution and submitted evidence ID.
-- Target approval: current approved capture per screen/variant and revision.
-  An append-only event log records approval and feedback transitions.
+| Record | Identity and behavior |
+| --- | --- |
+| Project | Stable key, name, optional repository identity |
+| Screen | Stable external key within a project; represents a UI state |
+| Variant | Device, viewport, browser, theme, locale, text scale |
+| Capture | Immutable image and metadata, including role, revision, fixture, provenance |
+| Run | Immutable capture set with at most one role per screen/variant |
+| Note | Original capture anchor, normalized point/region, text, status, revision, fix evidence |
+| Target approval | Capture/variant decision with revision and append-only history |
+| Review set | Ordered screen/variant entries from one immutable run; edits require a revision |
 
-Capture roles are current, target and pr. A proposed target is not automatically
-approved. A PR result is not automatically the target. Approval changes do not
-erase past events or images.
+Roles are `current`, `target`, and `pr`. Importing a target does not approve it.
+Approvals and feedback changes preserve earlier evidence. Cross-platform logical
+screen grouping remains planned work.
 
-## Comparison semantics
+## Comparison and feedback
 
-Align on stable screen identity and exact variant fields. Never match by fuzzy
-title alone. Missing sides remain missing. Identical file hashes mean identical
-bytes; different file hashes do not prove a visual difference. Pixel comparisons decode through Sharp to oriented sRGB RGBA and compare the
-maximum absolute channel difference against a recorded integer tolerance.
-Lossless PNG artifacts mark changes and explicit excluded regions. Overlay requires identical decoded dimensions and does
-not resize mismatched screenshots to manufacture alignment.
+Comparisons match stable screen identity and exact variants. Missing sides stay
+missing. Pixel measurements decode oriented sRGB RGBA through Sharp, record
+thresholds and masks, and require equal dimensions. A hash difference is not a
+visual measurement. See [Evidence contracts](evidence.md).
 
-## Feedback semantics
+Area coordinates use normalized `x`, `y`, `width`, and `height`. Comments remain
+on their original captures. Agents submit fresh evidence for the same screen and
+variant; people verify fixes and approve targets.
 
-Notes retain their original capture. Area comments store a region with normalized
-`x`, `y`, `width`, and `height`, so the mark scales with the preview. Earlier notes are visible with a link to the
-original evidence but are not drawn on newer images. Agents submit a fresh
-implementation capture of the same screen and variant plus an explanation.
-Human-facing UI offers verification and reopening. A stale expected revision
-returns HTTP 409 rather than overwriting another edit.
-
-## MCP
-
-v0.2 targets protocol 2025-03-26, with initialize, ping, tools/list and tools/call.
-It supports newline-delimited stdio and stateless JSON responses over Streamable
-HTTP. GET /mcp returns 405; server-initiated SSE is not implemented. Registry tools do not expose
-arbitrary filesystem reads or shell execution. Headless file and execution actions
-are available only through the explicit local CLI. The explicit local CLI handles
-manifest reads and import. PR metadata uses the GitHub REST API. Image tool responses are actual
-MCP image content blocks rather than filenames.
-
-## Trust boundary
-
-v0.2 is single-user and local. Host/Origin checks protect against cross-origin
-browser requests. They are not multi-user authentication. Local scripts can reach
-the human review API, so omitted MCP approval tools are a workflow convention,
-not a security claim. Hosted operation needs authenticated actors, authorization,
-transport security and enforced evidence provenance before enabling remote access.
+Region measurements round the start down and the end up to decoded pixel
+boundaries. Masks remain in original-image coordinates; counts and artifacts
+cover the crop. Full-image and region measurements have distinct immutable IDs.
 
 ## Capture execution
 
-Import never executes a repository. PR metadata comes from GitHub REST, with exact head,
-base and merge-base identifiers. The explicit browser adapter clones exact commits into temporary checkouts, runs reviewed argument-array commands, captures matching variants, records provenance and removes temporary checkouts. Native
-applications must use native capture. Web screenshots must use fixture-controlled
-browser sessions. Existing evidence can be imported without being falsely
-presented as freshly verified runtime evidence.
+Import and discovery do not execute projects. Working-tree and exact-commit
+capture share one version 1 `applications[].scenarios` recipe and runtime:
 
-## Evidence storage (schema v2)
+| Module | Responsibility |
+| --- | --- |
+| `capture-recipe.mjs` | Normalize recipes, profiles, selections, and matrices |
+| `discovery.mjs`, `capture-assets.mjs` | Read application markers, environment requirements, scenarios, and fixtures |
+| `source-graph.mjs` | Parse supported routes, imports, and component relationships |
+| `automatic-plan.mjs` | Draft settings with evidence; recompute configuration decisions |
+| `auto-capture.mjs` | Execute browser, Apple, and command adapters |
+| `capture.mjs` | Prepare exact Git checkouts and compare revisions |
+| `capture-process.mjs` | Start commands and clean up process groups |
+| `capture-environment.mjs` | Resolve settings, order services, wait for readiness, clean up |
+| `capture-scenarios.mjs` | Resolve scenarios, fixtures, login, Storybook, and browser readiness |
+| `fixture-boundaries.mjs` | Setup, reset, and teardown per run, scenario, or group |
+| `native-contract.mjs` | Map declared Apple screens and request-specific readiness |
+| `screen-inventory.mjs` | Bind source findings to evidence and required coverage |
+| `capture-summary.mjs` | Group failures and next actions |
 
-`diffs` records immutable left/right capture IDs, original byte hashes, algorithm
-and decoder versions, tolerance, masks, dimensions, fixture status and measured
-counts. Size mismatches produce a stored not-measured result with no image. The
-same inputs reuse the same record. Images are capped at 16 million decoded pixels.
+Browser contexts are isolated per scenario/variant. Backend fixture resets are
+separate. Apple capture uses native windows or disposable simulators; command
+adapters emit canonical evidence manifests. Working-tree capture does not prove
+an isolated commit. Fixture capture does not prove live-account behavior.
 
-`evidence` records immutable capture-bound assertions, procedures, observations,
-reporter identity, method and reported outcomes. Optional text/JSON/video artifacts
-are content-addressed in assets. Neither a pass nor a zero diff promotes targets
-or verifies feedback. Evidence provenance is explicitly reporter-supplied. Optional bundle signatures
-identify the signing key and protect exported bytes; they do not attest execution. Downloads are attachments.
+Source confidence is `declared`, `referenced`, or `possible`. Uncertain components
+stay in an optional backlog. Declared scope, configured scenarios, and explicit
+required IDs determine completion. Capture creation and readiness are separate
+results; diagnostic images remain evidence. Reports expose screens, scenarios,
+variants, and candidates separately. See [Automatic capture](automatic-capture.md).
 
-New runs snapshot registered screens with no captures as uncoveredScreens. This
-preserves known coverage gaps without manufacturing evidence or changing old runs.
-Schema v2 adds tables and an evidence index; it retains all v1 rows and assets.
+## Jobs and resume
 
-Run comparisons expose `measurements` for all measured pairs of exact captures.
-The older `pixelComparison` byte-level summary is explicitly scoped by
-`pixelComparisonPair` to current/pr; it is not a summary of target comparisons.
+The server runs the local scheduler and worker during `screens serve`. Jobs use
+leases, heartbeats, ownership checks, events, and scenario/variant checkpoints.
+Expired leases permit replacement workers; cancellation aborts the old worker.
+Automatic attempts use a fresh worker context and module cache.
 
-## Workspace responsiveness
+Checkpoints bind immutable captures and readiness to source, recipe, environment,
+engine, and toolchain identities. Reuse requires unchanged inputs, passing
+readiness, a fixture identity, and independent or reset state. Shared-state groups
+and command batches rerun. Each attempt writes new artifacts and a new run.
+See [resume rules](automatic-capture.md#automatic-capture-jobs-and-resume).
 
-Schema v3 adds derived image previews and idempotency records. Preview dimensions
-and ThumbHashes are stored by image hash, separately from immutable captures.
-Uploads prepare previews before returning; imported images prepare them when first
-opened in the review service. Preview decoding has the same 16-million-pixel limit
-as comparisons.
+## Evidence and storage
 
-HTTP mutations accept an `Idempotency-Key` UUID v4. MCP mutation tools accept
-`idempotencyKey`. The shared operation service persists the request fingerprint
-and result with the write. Reusing a key with different input returns 409. Pixel
-diffs remain content-addressed, including when concurrent requests compute them.
+Captures, diffs, and evidence are immutable; assets are content-addressed.
+Measurements retain exact input IDs, hashes, algorithms, dimensions, and counts.
+Evidence retains reporter-supplied assertions, observations, outcomes, and optional
+attachments. Neither measurements nor CI reports change human decisions.
 
-The browser caches reads in memory and refreshes active queries on focus, reconnect,
-and writes. Revision checks remain authoritative. Reopening feedback is optimistic
-with a seven-second Undo window before sending the update; failures restore the
-server state. Approvals and verification wait for the server.
+Schema additions cover diffs/evidence (v2), previews/idempotency (v3), review sets
+(v4), and headless services (v5). Previews and ThumbHashes are derived by image
+hash. Decode limits are 16 million pixels. Runs snapshot registered screens with
+no captures as `uncoveredScreens`. Comparisons expose all `measurements`; the
+older `pixelComparison` summary is limited to its `pixelComparisonPair`.
 
-## UI components
+Backups use SQLite's online backup API and copy referenced assets. Retention
+coordinates with asset writers in transactions. Managed Ed25519 signatures
+identify a key and protect bytes; receiving registries explicitly trust signers.
+See [Storage](storage-tools.md).
 
-Standard interactions use local shadcn components in `ui/components/ui/`.
-Command uses cmdk inside a Radix Dialog on desktop and a Vaul Drawer on phones.
-The mobile library also uses Drawer. Forms compose Field, FieldLabel, FieldSet,
-Input, Textarea, and NativeSelect; disclosures use Collapsible and the image
-blend uses Slider. ToggleGroup owns exclusive view and filter choices. Alerts
-and Sonner provide notices and notifications. The seven-second Undo delay stays
-in the application service.
+## UI state and writes
 
-Collapsible content remains mounted to preserve form drafts and to let command
-search reveal nested controls. Closed content is hidden from view and keyboard
-navigation. Screenshot rendering and annotation geometry remain custom React
-components. Shared styles apply the Verdictan palette to the primitives.
+HTTP mutations accept an `Idempotency-Key` UUID v4; MCP uses `idempotencyKey`.
+The service stores input fingerprints and results atomically. Reusing a key for
+different input returns 409.
 
-## Review sets and selected areas
+The UI caches reads and refreshes on focus, reconnect, and writes. Feedback
+reopening has a seven-second Undo delay; failures restore server state. Approval
+and verification wait for the server. Collapsible forms stay mounted to preserve
+drafts, but closed content is hidden from view and keyboard navigation.
 
-Schema v4 adds review sets. Each set belongs to one immutable run and stores an
-ordered list of exact screen/variant entry keys. Changes to its name, membership,
-or order require the expected revision. Updates append an event and never change
-run captures. The library and previous/next controls follow the selected set's
-order. HTTP and MCP use the same review-set operation and store methods.
+## Local trust boundary
 
-Area selection uses normalized capture coordinates. A selection can become a
-capture-bound comment or select the region to compare. Existing area comments
-are selectable only when their original capture belongs to the displayed pair.
-Both previews show that region; source images remain unchanged.
+Screens is a trusted single-user service. Host/Origin checks protect browser
+requests; they are not account authentication. Local processes can reach the
+human review API. MCP omits approval and verification as a workflow boundary.
+Do not expose the service publicly.
 
-Pixel diffs include the normalized region in their immutable identity. Measurement
-uses the same rectangle on equal-sized decoded captures, rounds its start down
-and end up to pixel boundaries, and records the resulting `regionPixels`.
-Excluded masks remain in original image coordinates. Counts cover only the crop,
-and the difference artifact contains only the crop. Full-image results and region
-results are distinct records. Size mismatches remain unmeasured.
+MCP uses protocol `2025-03-26`, newline-delimited stdio, and stateless Streamable
+HTTP. `GET /mcp` returns 405; SSE is not implemented. Image responses contain
+actual image content. File access, project execution, and storage administration
+remain CLI-only. PR metadata uses GitHub REST.
 
-## Headless services (schema v5)
-
-`src/headless.mjs` publishes one action catalog shared by the CLI, MCP, and HTTP.
-Descriptors include input schemas and CLI-only access for file paths, capture
-execution and storage administration. OCR uses bundled WASM code and English
-language data for registered captures, and is available through MCP.
-The CLI reads a JSON input file or typed flags. MCP uses underscore action names;
-HTTP exposes registry actions under `/api/automation/`.
-
-`src/automation.mjs` persists capture jobs, leases, checkpoints, progress events,
-schedules and agent claims. A queued capture freezes its
-expanded recipe and resolved commit. Workers renew leases and save each capture
-before recording its checkpoint. Expired leases allow a replacement worker to
-resume; cancellation invalidates ownership and aborts the old worker. The server
-starts and stops the local scheduler and worker with its own lifetime.
-
-Schedules run while `screens serve` is active. Creating a capture job or schedule
-requires explicit execution authorization. Import and discovery never enqueue
-captures. The local event log supports cursor reads and `events-watch` streams;
-there are no external webhook endpoints or distributed-worker connections.
-
-`src/evidence-tools.mjs` stores immutable derived evidence and source links apart
-from captures. Browser collectors record DOM, accessibility, console, network,
-fonts, fixtures, and selector bounds when configured. OCR uses a packaged Tesseract.js worker, WASM core, and English model without
-runtime downloads or an external executable. Perceptual scores retain exact dimensions and algorithm identity.
-CI reports have their own immutable table and can include job-only failures.
-A CI result never changes a target approval or feedback verification.
-
-`src/storage-tools.mjs` implements portable bundles, online SQLite backups,
-restore, integrity reports, usage accounting, retention plans, and signatures.
-Capture and artifact insertion transactions coordinate with explicit unreferenced
-asset removal. Assets stay in the local registry. Screens creates and manages a
-local Ed25519 signing key. Public keys can be exported and explicitly trusted
-by another registry; signatures never establish their own trust.
-
-`src/runtime.mjs` supplies the bundled Git executable and package-local Chromium, Firefox, and WebKit.
-Normal package installation downloads their pinned platform binaries. The
-installer also installs required browser system libraries on supported Linux.
-Capture and OCR do not download dependencies at runtime. Application-specific
-build commands still use the application project's own toolchain.
-
-See [headless features](headless.md) for command contracts and operating limits.
+Installation supplies pinned platform Git, browser engines, English OCR, and
+axe-core. Capture and OCR do not download dependencies at runtime. App build
+commands still need the project's toolchain. Hosted authentication and other
+remaining work are in the [Roadmap](roadmap.md).

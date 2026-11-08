@@ -33,7 +33,7 @@ if (config.runtime === "docker") {
     throw Error(
       "Docker skills always use the compose registry volume; omit --data",
     );
-  if (args[0] === "pr-context") {
+  if (["pr-context", "detect", "capture-draft"].includes(args[0])) {
     command = process.execPath;
     parameters = [cli, ...args];
   } else if (args[0] === "serve")
@@ -49,7 +49,10 @@ if (config.runtime === "docker") {
       mounts.push("--volume", `${mount}:${target}:${writable ? "rw" : "ro"}`);
       args[index] = isDirectory ? target : `${target}/${basename(source)}`;
     };
-    if (args[0] === "load") mapFile(1, !args[1]?.endsWith(".json"));
+    if (args[0] === "capture-auto" || (args[0] === "load" && args.includes("--capture"))) {
+      if (!args[1] || args[1].startsWith("--")) args.splice(1, 0, ".");
+      mapFile(1, true, true);
+    } else if (args[0] === "load") mapFile(1, !args[1]?.endsWith(".json"));
     if (args[0] === "evidence" && args[1] === "add") mapFile(2);
     if (args[0] === "capture-pr")
       throw Error(

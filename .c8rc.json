@@ -5,16 +5,31 @@
     "ui/**",
     "scripts/**",
     "skills/screens/scripts/**",
-    "dist/ui/assets/*.js"
+    "dist/ui/assets/*.js",
+    "*.mjs",
+    "examples/**/*.mjs"
   ],
-  "extension": [".mjs", ".js", ".jsx"],
+  "extension": [
+    ".mjs",
+    ".js",
+    ".jsx"
+  ],
   "excludeAfterRemap": true,
-  "reporter": ["text", "html", "json", "json-summary"],
+  "reporter": [
+    "text",
+    "html",
+    "json",
+    "json-summary"
+  ],
   "check-coverage": true,
   "per-file": true,
   "lines": 100,
   "statements": 100,
   "functions": 100,
   "branches": 100,
-  "exclude": ["node_modules/**", "test/**", "coverage/**"]
+  "exclude": [
+    "node_modules/**",
+    "test/**",
+    "coverage/**"
+  ]
 }

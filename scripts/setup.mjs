@@ -19,6 +19,7 @@ for (let i = 2; i < process.argv.length; i++) {
   --data DIR          Local registry directory
   --port NUMBER       Picker and MCP port (default: 4800)
   --start             Start the picker for source installs
+  --capture yes       Detect apps, run captures, and import the results
   --replace yes       Update existing Screens workflow files
 
 Clients: generic, claude, codex, cursor, copilot, gemini, opencode.
@@ -26,11 +27,11 @@ Other agents can use the generated MCP settings or CLI guide.
 Local setup uses Homebrew and starts its service when brew is available.
 Otherwise, local setup requires Node 22.22.2+ and npm.
 Chromium, Firefox, WebKit, and their supported Linux libraries install with Screens.
-No tests or capture recipes run during installation.`);
+No tests run during installation. Capture runs only with --capture yes.`);
     process.exit(0);
   }
   const key = name.slice(2);
-  if (!name.startsWith("--") || ![...flags, "project", "client", "data", "port", "replace"].includes(key))
+  if (!name.startsWith("--") || ![...flags, "project", "client", "data", "port", "replace", "capture"].includes(key))
     throw Error(`Unknown option ${name}. Use --help.`);
   if (flags.has(key)) options[key] = true;
   else {
@@ -70,7 +71,7 @@ if (brew) {
 }
 if (brew) run(runtimeNode, [join(runtimeRoot, "scripts/bundle-runtime.mjs")]);
 const installArgs = [join(runtimeRoot, "scripts/install-skills.mjs")];
-for (const key of ["project", "client", "runtime", "data", "port", "replace"])
+for (const key of ["project", "client", "runtime", "data", "port", "replace", "capture"])
   if (options[key] !== undefined) installArgs.push(`--${key}`, options[key]);
 run(runtimeNode, installArgs);
 const connectionDirectory = options.project ? join(options.project, ".screens") : join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "screens");

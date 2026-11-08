@@ -9,19 +9,19 @@ import { takeCoverage } from "node:v8";
 import { fixture } from "./support/registry.mjs";
 import { moduleUnderTest } from "./support/module.mjs";
 import {
-  captureConfig,
   resolvePullRequest,
   captureRevision,
 } from "../src/capture.mjs";
-const baseConfig = () => ({
-  schemaVersion: 1,
-  adapter: "browser",
-  project: { id: "demo", name: "Demo" },
+import { captureConfig, expandCaptureConfig } from "../src/capture-recipe.mjs";
+import * as scenarioOperations from "../src/capture-scenarios.mjs";
+const baseApp = () => ({
+  path: ".", adapter: "browser",
   fixture: "seed",
-  screens: [{ key: "home", title: "Home", path: "/" }],
+  scenarios: [{ key: "home", title: "Home", path: "/" }],
   variants: [{ device: "desktop", width: 200, height: 200 }],
   serve: ["node", "server.mjs"],
 });
+const baseConfig = () => ({ version: 1, scope: "configured", project: { id: "demo", name: "Demo" }, applications: [baseApp()] });
 test("capture configuration validates identities, commands, routes and variants", async (t) => {
   const { dir } = await fixture(t),
     file = join(dir, "capture.json");
@@ -29,28 +29,30 @@ test("capture configuration validates identities, commands, routes and variants"
     fs.writeFileSync(file, JSON.stringify(value));
     return captureConfig(file);
   };
-  assert.equal(check(baseConfig()).value.fixture, "seed");
+  assert.equal(check(baseConfig()).value.applications[0].fixture, "seed");
   const custom = baseConfig();
-  custom.screens[0].ready = "#ready";
-  custom.variants[0].theme = "dark";
-  custom.prepare = [["node", "prepare.mjs"]];
-  assert.equal(check(custom).value.variants[0].theme, "dark");
+  custom.applications[0].scenarios[0].ready = "#ready";
+  custom.applications[0].variants[0].theme = "dark";
+  custom.applications[0].prepare = [["node", "prepare.mjs"]];
+  assert.equal(check(custom).value.applications[0].variants[0].theme, "dark");
   for (const patch of [
-    { schemaVersion: 2 },
-    { adapter: "native" },
+    { version: 2 },
     { project: {} },
-    { screens: [] },
-    { screens: Array(201).fill(baseConfig().screens[0]) },
-    { screens: [{ key: "home", title: "Home", path: "//remote" }] },
-    { screens: [{ key: "home", title: "Home", path: 5 }] },
-    { screens: [...baseConfig().screens, ...baseConfig().screens] },
+    ...[
+    { scenarios: [] },
+    { scenarios: Array(201).fill(baseApp().scenarios[0]) },
+    { scenarios: [{ key: "home", title: "Home", path: "//remote" }] },
+    { scenarios: [{ key: "home", title: "Home", path: 5 }] },
+    { scenarios: [...baseApp().scenarios, ...baseApp().scenarios] },
     { serve: "node" },
     { serve: [] },
     { serve: [1] },
     { variants: [] },
-    { variants: Array(11).fill(baseConfig().variants[0]) },
+    { variants: Array(11).fill(baseApp().variants[0]) },
     { variants: [{ device: "desktop", width: 199, height: 4001 }] },
-    { variants: [...baseConfig().variants, ...baseConfig().variants] },
+    { variants: [...baseApp().variants, ...baseApp().variants] },
+    { adapter: "native" },
+    ].map(patch => ({ applications: [{ ...baseApp(), ...patch }] })),
   ])
     assert.throws(() => check({ ...baseConfig(), ...patch }));
   await assert.rejects(resolvePullRequest("bad", "1"), /OWNER/);
@@ -119,21 +121,28 @@ async function captureFixture(
       calls.push(["context", options]);
       return {
         close: async () => calls.push(["context-close"]),
-        newPage: async () => ({
+        newPage: async () => {
+          let location;
+          return {
+          on() {},
+          url: () => location,
           goto: async (url) => {
-            calls.push(["goto", url]);
+            calls.push(["goto", url]); location = url;
             if (mode === "page-fails") throw Error("page failed");
+            return { status: () => 200 };
           },
+          waitForTimeout: async () => {},
           locator: (selector) => ({
             waitFor: async () => calls.push(["ready", selector]),
           }),
           addInitScript: async () => {},
           evaluate: async (fn, input) => fn(input),
           screenshot: async (options) => {
-            fs.writeFileSync(options.path, bytes);
+            if (options.path) fs.writeFileSync(options.path, bytes);
             return bytes;
           },
-        }),
+        };
+        },
       };
     },
   };
@@ -149,18 +158,18 @@ async function captureFixture(
                 repo: mode === "no-head-repo" ? null : { full_name: "owner/repo" } } },
       };
       fetchCalls++;
-      if (mode === "timeout") return { ok: false };
+      if (mode === "timeout") return { ok: false, status: 500 };
       if (fetchCalls === 1) throw Error("starting");
-      return { ok: true };
+      return { ok: true, status: 200 };
     },
     setTimeout: (fn, ms) => {
-      if (ms === 300000 && mode !== "prepare-timeout")
+      if ([300000, 600000].includes(ms) && mode !== "prepare-timeout")
         return setTimeout(fn, 10000);
       return setTimeout(fn, ms === 3000 ? 1 : 0);
     },
     clearTimeout,
   };
-  const result = await moduleUnderTest("src/capture.mjs", {
+  const settings = {
     platform,
     globals,
     mocks: {
@@ -193,7 +202,19 @@ async function captureFixture(
         queueMicrotask(() => finish(child, null, signal));
       },
     },
-  });
+  };
+  const transport = await moduleUnderTest("src/capture-process.mjs", settings);
+  const shared = await moduleUnderTest("src/auto-capture.mjs", { ...settings, mocks: { ...settings.mocks,
+    "./capture-process.mjs": transport.exports,
+    "./capture-scenarios.mjs": { ...scenarioOperations, prepareBrowserPage: async () => {}, readiness: async () => ({ status: "passed" }) },
+  } });
+  const result = await moduleUnderTest("src/capture.mjs", { ...settings, mocks: { ...settings.mocks,
+    "./capture-process.mjs": transport.exports, "./auto-capture.mjs": shared.exports,
+    "./automatic-plan.mjs": { automaticInput: (root, options) => ({ root, config: expandCaptureConfig(options.recipe), inputHash: "fixture-input",
+      detection: { applications: [], recipes: [], warnings: [], nativeContract: null,
+        inventory: { items: [], warnings: [], limitations: [], scope: "fixture" },
+        assets: { environment: [], scenarios: [], fixtures: [], readiness: [] } } }) },
+  } });
   t.after(() => takeCoverage());
   return {
     ...result,
@@ -214,13 +235,13 @@ async function captureFixture(
 test("capture records exact revisions, browser options, files and command output", async (t) => {
   for (const platform of [process.platform, "win32"]) {
     const config = baseConfig();
-    config.prepare = [["prepare", "{runtime}"]];
-    config.screens[0].ready = "#ready";
-    config.screens[0].fullPage = false;
-    config.variants[0].theme = "dark";
-    config.variants[0].locale = "es";
-    config.directory = ".";
-    config.readyPath = "/ready";
+    config.applications[0].prepare = [["prepare", "{runtime}"]];
+    config.applications[0].scenarios[0].ready = "#ready";
+    config.applications[0].scenarios[0].fullPage = false;
+    config.applications[0].variants[0].theme = "dark";
+    config.applications[0].variants[0].locale = "es";
+    config.applications[0].path = ".";
+    config.applications[0].readyPath = "/ready";
     const f = await captureFixture(t, { config, platform });
     const result = await f.exports.captureRevision(f.store, {
       ...f.options,
@@ -244,7 +265,7 @@ test("capture records exact revisions, browser options, files and command output
     );
   }
 });
-test("capture failures stop children and retain logs without publishing a run", async (t) => {
+test("capture failures stop children and retain logs and diagnostic reports", async (t) => {
   for (const mode of [
     "prepare-fails",
     "prepare-spawn-error",
@@ -258,12 +279,10 @@ test("capture failures stop children and retain logs without publishing a run", 
     "kill-error",
   ]) {
     const config = baseConfig();
-    if (mode.startsWith("prepare")) config.prepare = [["prepare"]];
+    if (mode.startsWith("prepare")) config.applications[0].prepare = [["prepare"]];
     const f = await captureFixture(t, { mode, config });
-    await assert.rejects(
-      f.exports.captureRevision(f.store, f.options),
-      /failed|error|exited|ready|Capture preparation/,
-    );
+    const result = await f.exports.captureRevision(f.store, f.options);
+    assert.equal(result.exitCode, 1);
     assert.equal(fs.existsSync(join(f.options.output, "capture.log")), true);
   }
   for (const mode of ["kill-delay", "kill-esrch"]) {
@@ -271,11 +290,11 @@ test("capture failures stop children and retain logs without publishing a run", 
     assert.ok((await f.exports.captureRevision(f.store, f.options)).run.id);
   }
   const config = baseConfig();
-  config.directory = "..";
+  config.applications[0].path = "..";
   const f = await captureFixture(t, { config });
   await assert.rejects(
     f.exports.captureRevision(f.store, f.options),
-    /inside checkout/,
+    /inside|project/,
   );
 });
 test("comparison resolves commits, host PR metadata and changed PR heads", async (t) => {
@@ -315,3 +334,5 @@ test("comparison resolves commits, host PR metadata and changed PR heads", async
   assert.match(r.url, /:4901/);
   assert.equal(r.run.title, "Git revision comparison");
 });
+
+test('process launch rejects invalid commands before spawning',async()=>{const{launch}=await import('../src/capture-process.mjs');for(const args of [[],null,'node',[1],['']])assert.throws(()=>launch(args,'.',{},()=>{}),/argument arrays/);});

@@ -1,78 +1,67 @@
-# Local Docker deployment
+# Docker deployment
 
-Docker is an optional distribution of Screens. It includes the same application,
-CLI commands, agent skills, pinned runtime dependencies, bundled Git, browser
-engines, English OCR, accessibility scanner, signing, and local job service as
-the Homebrew package.
+Docker and Homebrew include the same Screens application, CLI, skills, pinned
+runtime packages, Git, browsers, English OCR, and accessibility scanner. Docker
+is optional. Apple capture requires a macOS host.
 
-Requires Docker Engine/Desktop with Compose v2. From this checkout, run:
+## Start
+
+Requires Docker Engine/Desktop and Compose v2:
 
 ```sh
 docker compose up -d --build --wait
 docker compose logs --tail=50 screens
 ```
 
-Open http://127.0.0.1:4800. The service runs as the unprivileged node user with a
-read-only application filesystem. SQLite, WAL files, images, diffs and evidence
-artifacts persist in the `screens-data` named volume. Compose publishes the port
-on host loopback only. Host/Origin checks remain enabled. This is a trusted local
-service, without user authentication; public shared hosting is a separate milestone.
+Open <http://127.0.0.1:4800>. Compose binds to loopback; keep that binding.
+To change the port, set `SCREENS_PORT=4900` in `.env` and use it for both UI and MCP.
+Screens has no account authentication. Do not expose it publicly.
 
-Browser configuration and cache files use the writable `/tmp` mount. They do not
-write into the read-only application or home directory. Registry evidence remains
-in the persistent `/data` volume.
+The container runs as unprivileged `node` (UID 1000) with a read-only application
+filesystem. `/tmp` holds browser caches/configuration; the `screens-data` volume
+at `/data` holds the registry and evidence.
 
-To change the port, set `SCREENS_PORT=4900` in a local `.env` file before starting.
-The container and published port use the same number so Host/Origin checks agree.
-Use that port for the picker and MCP URL. Do not override the loopback port binding.
-
-## Import into the container's registry
+## Import
 
 ```sh
 docker compose run --rm --no-deps -T \
   --volume /absolute/project:/input:ro \
-  screens node src/cli.mjs load /input --project my-project
+  screens node src/cli.mjs load /input --project my-app
 ```
 
-Mount the directory containing the manifest and its referenced captures. The
-importer never executes code from that mount. The host's default Screens database
-and the Docker volume are separate: use the command above or a Docker-configured
-skill for every import. Do not import on the host and expect the container to see it.
+Mount the manifest directory and its images together. Imports never execute app
+code. The host registry and Docker volume are separate; use container commands
+or a Docker-configured helper to write to the container registry.
 
-## Agent setup
+## Connect agents
 
 ```sh
-npm run skills:install -- --project /absolute/project --client all --runtime docker
-claude mcp add --transport http --scope user screens http://127.0.0.1:4800/mcp
-codex mcp add screens --url http://127.0.0.1:4800/mcp
+npm run skills:install -- --project /path/to/app --client all --runtime docker
 ```
 
-Other agents can use the generated `.screens/` connection files or CLI guide; see
-[agent setup](agent-skills.md). Pass `--port` to the installer when using a custom port.
+[Agent setup](agent-skills.md) explains generated connections and HTTP registration.
+Pass the custom `--port` if used. Build the image before using the helper.
+`pr-context` resolves GitHub metadata on the host; use `capture-refs` for Docker
+captures. Capture outputs need a writable mount accessible to UID 1000.
 
-The installed helper mounts input files read-only and uses Compose for load,
-compare, diff, evidence and stdio MCP. `serve` starts Compose. `pr-context` reads GitHub metadata directly through the API. Set `GITHUB_TOKEN`
-for private-repository access; GitHub CLI installation is not required.
-Build/start Compose before asking the skill to import. The helper does not silently
-build a container while executing an MCP request.
+## Update and back up
 
-## Stop, upgrade and backup
+After pulling source changes:
 
-`docker compose down` stops the service and retains the data volume. Do not use
-`down -v` unless deleting the registry is intended. Rebuild with
-`docker compose up -d --build --wait` after pulling changes.
+```sh
+docker compose up -d --build --wait
+```
 
-Use the same backup command in either distribution. In Docker, write into the
-persistent data volume, then copy the completed backup out:
+`docker compose down` stops Screens and retains its volume. Adding `-v` deletes
+that volume. To export an online backup:
 
 ```sh
 docker compose exec screens screens registry-backup --output /data/backup-new
 docker compose cp screens:/data/backup-new ./screens-backup
 ```
 
-Backups include screenshots, reports, recordings, and the signing identity when
-one exists. Restore with `screens registry-restore --source BACKUP --output NEW_DIR`.
-The destination must be a new directory and writable by the container user.
+Backups include evidence and an existing signing identity. See [Storage](storage-tools.md)
+for restore and signature rules. Backup and restore destinations must be new.
 
 ## Deployment check
 
@@ -85,63 +74,40 @@ docker compose up -d --wait
 docker compose exec -T screens node scripts/smoke-deployment.mjs read
 ```
 
-The smoke check writes one clearly named deployment-check project and verifies it
-survives restart. CI runs this workflow in an isolated Compose project.
-
-For browser capture, feedback, fix submission, approval and restart proof without
-CI, use the [standalone Docker proof runner](standalone-proof.md).
+This writes a deployment-check project and checks restart persistence. The
+[standalone proof](standalone-proof.md) exercises the full fixture review workflow
+in isolated containers.
 
 ## SSH deployment
 
-From a clean, committed checkout with SSH access:
+From a clean committed checkout, replace the example destination:
 
 ```sh
-bash scripts/deploy-ssh.sh dennisotugo@192.168.1.142 4900
-ssh -N -L 4900:127.0.0.1:4900 dennisotugo@192.168.1.142
+bash scripts/deploy-ssh.sh user@example.com 4900
+ssh -N -L 4900:127.0.0.1:4900 user@example.com
 ```
 
-Open http://localhost:4900. Port 4900 keeps the remote deployment separate from a
-local Screens instance on 4800. The script archives the exact Git commit, writes a
-new release directory, builds with Compose, and checks HTTP/MCP plus persistence
-across restart. The stable `screens` Compose project retains its named volume.
-It never copies local databases or screenshots. Import project evidence explicitly
-after deployment. Keep the SSH tunnel active; no public HTTP port is opened.
-
-Both distributions install Chromium, Firefox, WebKit, and Git from the same
-pinned npm dependencies. Native binaries match the target OS and architecture;
-they are not copied between platforms. Configuration
-and source mounts stay read-only; the capture output directory must be writable by
-the container user (UID 1000). Never use the service as a public execution endpoint.
+Open <http://localhost:4900> and keep the tunnel active. The script archives the
+exact commit, creates a release directory, builds with Compose, and checks
+HTTP/MCP and restart persistence. The stable `screens` Compose project retains
+its volume. Local databases and images are not copied; import evidence explicitly.
 
 ## Release parity
-
-Both releases use the committed `package-lock.json` as their dependency lock.
-The release command builds the UI and creates a portable source archive that
-includes that lockfile:
 
 ```sh
 npm run release:package -- --output release
 ```
 
-Homebrew extracts the archive and runs `npm ci --omit=dev` inside the installed
-application directory. Docker runs the same frozen dependency installation in
-its runtime stage. Platform-specific binaries install for their target system.
-The package explicitly permits the pinned Dugite installer through `allowScripts`.
+Release packaging builds the UI and archives the declared package files and
+committed `package-lock.json`. Homebrew and Docker both run `npm ci --omit=dev`
+and `scripts/bundle-runtime.mjs` through `postinstall`.
 
-Both installation paths run `scripts/bundle-runtime.mjs` through `postinstall`.
-It installs the browser revisions selected by the pinned Playwright package.
-Dugite installs the matching platform Git, and the OCR worker, WASM core, English
-model, and axe-core come from the locked dependency graph. Runtime commands use
-these package-local components.
+Playwright supplies pinned browser revisions; Dugite supplies platform Git.
+The OCR worker, WASM core, English model, and axe-core come from the same lockfile.
+Native binaries match each target OS and architecture. Runtime capture and OCR
+do not download these dependencies.
 
-Docker includes the public support scripts, skills, examples, documentation, and
-built UI supplied in the npm release. Both packages also include the UI source,
-Dockerfile, Compose file, and build configuration used by the Docker agent helper.
-The `screens` command is available in both.
-Persistent data locations differ: Docker uses its `/data` volume; Homebrew uses
-the local registry. Each runs the same `serve` command and managed local services.
-
-Release jobs run `release:package` after setting the release version. The archive
-includes the built UI, package metadata, lockfile, and declared release files.
-Publishing runs outside this repository; `.github/workflows/validate.yml` does
-not publish release packages.
+Both distributions include the CLI, built UI, UI source, support scripts, skills,
+examples, and Docker helper files. Homebrew uses the local registry; Docker uses
+`/data`. Publishing is external to this repository; the GitHub validation workflow
+does not publish releases.

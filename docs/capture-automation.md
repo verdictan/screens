@@ -1,79 +1,98 @@
 # Capture automation
 
-All commands use the existing registry and accept `--data DIR`. Commands return
-JSON. Supply structured arguments with `--input FILE`; scalar CLI flags use kebab
-case, for example `--max-changed-ratio 0.01`.
+Use this reference for exact Git revisions, profiles, source selection, and
+regression searches. For discovery, services, fixtures, and native contracts,
+start with [Automatic capture](automatic-capture.md). All commands accept `--data DIR`;
+see [CLI input](headless.md#command-input) for JSON arguments and scalar flags.
 
-Capture execution requires `--execute yes`. Import and discovery never start an
-application. Each capture attempt uses a new output directory and an isolated Git
-checkout. Captures remain immutable, and a measurement never approves a design.
+Commands that execute recipes require `--execute yes`. Import and discovery never start an
+application. Both modes use the version 1 `applications[].scenarios` recipe and the same
+execution lifecycle. Exact-commit capture adds an isolated Git checkout; working-
+tree capture uses the selected project directory. Each attempt writes new output. Captures remain immutable, and a measurement never approves a design.
 
 ## Profiles and device matrices
 
 ```json
 {
-  "schemaVersion": 1,
-  "adapter": "browser",
-  "project": { "id": "shop", "name": "Shop" },
-  "fixture": "catalog-v3",
-  "prepare": [["npm", "ci"]],
-  "serve": ["npm", "run", "dev", "--", "--host", "127.0.0.1"],
-  "matrix": {
-    "devices": [
-      { "device": "desktop", "width": 1280, "height": 900 },
-      { "device": "phone", "width": 390, "height": 844 }
-    ],
-    "themes": ["light", "dark"],
-    "locales": ["en", "fr"],
-    "textScales": [1, 1.25]
-  },
-  "browsers": ["chromium", "firefox", "webkit"],
-  "determinism": {
-    "time": "2026-01-01T12:00:00Z",
-    "seed": "catalog-seed-3",
-    "timezone": "UTC"
-  },
-  "fixtureData": { "catalogVersion": 3, "customer": "sample" },
-  "readiness": {
-    "selector": "[data-app-ready]",
-    "event": "shop:ready",
-    "fonts": ["16px Inter"],
-    "waitUntil": "domcontentloaded",
-    "timeoutMs": 30000
-  },
-  "evidence": { "dom": true, "console": true, "network": true, "fonts": true },
-  "screens": [
-    { "key": "catalog", "title": "Catalog", "path": "/catalog", "source": "src/pages/Catalog.tsx" },
-    { "key": "checkout", "title": "Checkout", "path": "/checkout", "source": "src/pages/Checkout.tsx" }
+  "version": 1,
+  "scope": "configured",
+  "project": {"id": "shop", "name": "Shop"},
+  "applications": [
+    {
+      "path": ".",
+      "adapter": "browser",
+      "fixture": "catalog-v3",
+      "prepare": [["npm", "ci"]],
+      "serve": ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "{port}"],
+      "matrix": {
+        "devices": [
+          {"device": "desktop", "width": 1280, "height": 900},
+          {"device": "phone", "width": 390, "height": 844}
+        ],
+        "themes": ["light", "dark"],
+        "locales": ["en", "fr"],
+        "textScales": [1, 1.25]
+      },
+      "browsers": ["chromium", "firefox", "webkit"],
+      "determinism": {"time": "2026-01-01T12:00:00Z", "seed": "catalog-seed-3", "timezone": "UTC"},
+      "fixtureData": {"catalogVersion": 3, "customer": "sample"},
+      "evidence": {"dom": true, "console": true, "network": true, "fonts": true},
+      "ready": {
+        "selector": "[data-app-ready]",
+        "event": "shop:ready",
+        "fonts": ["16px Inter"],
+        "waitUntil": "domcontentloaded",
+        "timeoutMs": 30000
+      },
+      "scenarios": [
+        {
+          "key": "catalog",
+          "title": "Catalog",
+          "path": "/catalog",
+          "source": "src/pages/Catalog.tsx"
+        },
+        {
+          "key": "checkout",
+          "title": "Checkout",
+          "path": "/checkout",
+          "source": "src/pages/Checkout.tsx"
+        }
+      ]
+    }
   ],
   "profiles": {
     "quick": {
-      "matrix": {
-        "devices": [{ "device": "desktop", "width": 1280, "height": 900 }],
-        "themes": ["light"],
-        "locales": ["en"],
-        "textScales": [1]
-      }
+      "applications": [
+        {
+          "path": ".",
+          "matrix": {
+            "devices": [{"device": "desktop", "width": 1280, "height": 900}],
+            "themes": ["light"],
+            "locales": ["en"],
+            "textScales": [1]
+          }
+        }
+      ]
     }
   }
 }
 ```
 
 The application must use the supplied `PORT` environment variable. `env` can add
-capture-specific string environment values. `directory` selects a working folder
-inside the checkout. `SCREENS_FIXTURE_VERSION` is set for application commands.
+capture-specific string environment values. `applications[].path` selects the working folder inside the project or checkout. The application fixture identity and browser fixture data are recorded with the capture.
 
-A profile replaces fields in the base configuration. `readiness`, `determinism`,
-`network`, and `evidence` merge by property. Matrix axes expand to concrete
+A profile overrides matching application paths. `ready`, `env`, `determinism`,
+`network`, `fixtures` and `evidence` merge by property. Root `defaults` can supply
+shared application values. Matrix axes expand to concrete
 variants. Explicit `variants` can be used instead. `browsers` selects the bundled
 engines; individual variants can specify `browser`. Chromium is the default. The
 Screens installer supplies Chromium, Firefox, WebKit, and their supported Linux
 system libraries. Capture startup never downloads a browser. Git is also bundled.
 
 ```sh
-screens capture-config-diagnose --config capture.json --profile quick
-screens capture-plan --config capture.json --profile quick
-screens capture-run --repo /path/to/app --ref COMMIT --config capture.json \
+screens capture-config-diagnose --config screens.capture.json --profile quick
+screens capture-plan --config screens.capture.json --profile quick
+screens capture-run --repo /path/to/app --ref COMMIT --config screens.capture.json \
   --profile quick --role pr --output /path/to/new-capture --execute yes
 ```
 
@@ -90,33 +109,25 @@ The browser receives `window.__SCREENS_FIXTURE__` with the declared fixture vers
 and `fixtureData`. Applications must consume these values when creating sample
 state; Screens does not invent or rewrite server data.
 
-Readiness waits for the specified selector, a named event dispatched on `window`,
-and requested fonts. Event listeners are installed before application scripts.
-Screens also waits for `document.fonts.ready`. Each screen can override `readiness`.
-An existing screen `ready` selector remains supported as a screen property.
+Use application or scenario `ready` for [readiness conditions and app signals](automatic-capture.md#scenario-readiness).
 
 `textScale` is a root-font-size multiplier. It affects layouts based on the root
 font size; it is not an operating-system accessibility setting.
 
-Set `animationTime` on the configuration or a screen to pause Web Animations API
+Set `animationTime` on the application or a scenario to pause Web Animations API
 animations at that time in milliseconds. Otherwise screenshots disable animations
 and request reduced motion. Canvas animation and video need application-specific
 fixture controls.
 
 ## Network replay
 
-Set `network` to replay a committed HAR file:
+Set application `network` to replay a committed HAR file:
 
 ```json
-{
-  "network": {
-    "har": "fixtures/catalog.har",
-    "origin": "https://fixture.example.test"
-  }
-}
+{"network": {"har": "fixtures/catalog.har", "origin": "https://fixture.example.test"}}
 ```
 
-`har` resolves inside the isolated repository checkout. `origin` must match the
+`har` resolves inside the application directory in either source mode. `origin` must match the
 origin recorded in the HAR; screenshot navigation uses it instead of the local
 server origin. Requests absent from the HAR fail. Service workers are blocked for
 replay. The application preparation and server commands still run locally.
@@ -130,15 +141,17 @@ Optional DOM, console, network, and accessibility collection uses the
 and attach region comments, for example:
 
 ```json
-{ "annotations": [{ "selector": "#pay-button", "text": "Check the primary action", "author": "Review agent" }] }
+{
+  "annotations": [{"selector": "#pay-button", "text": "Check the primary action", "author": "Review agent"}]
+}
 ```
 
 ## Route and change discovery
 
 ```sh
 screens routes-discover --repo /path/to/app --ref HEAD --project shop --output proposed-screens.json
-screens screens-affected --repo /path/to/app --config capture.json --base BASE --head HEAD
-screens capture-changed --repo /path/to/app --config capture.json --base BASE --head HEAD \
+screens screens-affected --repo /path/to/app --config screens.capture.json --base BASE --head HEAD
+screens capture-changed --repo /path/to/app --config screens.capture.json --base BASE --head HEAD \
   --output /path/to/new-changed-capture --execute yes
 ```
 
@@ -149,7 +162,7 @@ it does not register them. Parameterized routes have `requiresParameters: true`
 and need concrete capture paths. Runtime routes and nested relative router paths
 are not inferred.
 
-Changed-screen selection uses each screen's `source` or `sources` file patterns.
+Changed-screen selection uses each scenario's `source` or `sources` file patterns.
 It follows static imports, local re-exports, literal dynamic imports, and
 `require()` calls. It also reads `tsconfig.json`/`jsconfig.json` path aliases and
 workspace package dependencies. Configure additional aliases with `sourceAliases`
@@ -157,10 +170,21 @@ and global triggers with `sharedSources`:
 
 ```json
 {
-  "sourceAliases": { "@/*": ["src/*"] },
+  "sourceAliases": {"@/*": ["src/*"]},
   "sharedSources": ["src/theme/**", "package-lock.json"],
-  "screens": [
-    { "key": "catalog", "title": "Catalog", "path": "/catalog", "sources": ["src/pages/Catalog.*", "src/catalog/**"] }
+  "applications": [
+    {
+      "path": ".",
+      "adapter": "browser",
+      "scenarios": [
+        {
+          "key": "catalog",
+          "title": "Catalog",
+          "path": "/catalog",
+          "sources": ["src/pages/Catalog.*", "src/catalog/**"]
+        }
+      ]
+    }
   ]
 }
 ```
@@ -173,9 +197,9 @@ empty result without running capture commands.
 ## Repeatability and regression search
 
 ```sh
-screens capture-repeatability --repo /path/to/app --ref COMMIT --config capture.json \
+screens capture-repeatability --repo /path/to/app --ref COMMIT --config screens.capture.json \
   --count 3 --output /path/to/new-repeatability --execute yes
-screens capture-bisect --repo /path/to/app --base BASE --head HEAD --config capture.json \
+screens capture-bisect --repo /path/to/app --base BASE --head HEAD --config screens.capture.json \
   --mode scan --max-changed-ratio 0.01 --output /path/to/new-search --execute yes
 ```
 
@@ -194,22 +218,18 @@ retains each sampled revision and measurement without making an acceptance decis
 
 ```sh
 screens capture-merge --repo /path/to/app --ref refs/heads/merge-queue-candidate \
-  --config capture.json --output /path/to/new-merge-capture --execute yes
+  --config screens.capture.json --output /path/to/new-merge-capture --execute yes
 ```
 
 Fetch the merge queue's candidate into the local repository before invoking the
 command. Screens resolves its exact commit, captures that tree, and records its
 parent commits in `merge-candidate.json`. It does not create a merge or commit.
 
-The Screens service manages local scheduling, jobs, cancellation, and persistent
-progress while `screens serve` runs. No separate worker process is needed. See [headless commands](headless.md). The capture runner
-accepts an abort signal and stops application process groups, closes the browser,
-and removes its temporary checkout when interrupted. It stores each completed
-capture and its derived evidence before notifying the job service. A retry uses
-previous capture IDs only when the revision, variant, fixture, role, and effective
-configuration hash match, and writes new output files in a new attempt directory.
+Jobs use the [local scheduler](headless.md#jobs-and-schedules) and the shared
+[checkpoint rules](automatic-capture.md#automatic-capture-jobs-and-resume).
+On interruption, Screens stops process groups, closes browsers, and removes its
+temporary checkout. Each attempt retains completed evidence in new artifacts.
 
-Capture events have `type`, `at`, and `revision`, with screen, slot, capture, or run
-fields where relevant. Event types are `capture.started`, `capture.preparing`,
-`capture.navigating`, `capture.completed`, `capture.resumed`, and `capture.finished`.
-The CLI/job service can emit these as newline-delimited JSON.
+Progress events carry `type`, `at`, and `revision`, plus relevant screen, capture,
+or run IDs. Types are `capture.started`, `capture.preparing`, `capture.navigating`,
+`capture.completed`, `capture.resumed`, and `capture.finished`.

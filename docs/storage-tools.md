@@ -16,8 +16,7 @@ A bundle contains the selected set and its complete immutable source run, even
 when the set selects only some entries in that run. It includes the run's exact
 captures, feedback, submitted-fix capture references, target decisions, pixel
 measurements, semantic evidence, derived evidence, source links, run-linked CI
-reports, and related
-event records. Assets are embedded by SHA-256 address. The gzip file is portable;
+reports, and related event records. Assets are embedded by SHA-256 address. The gzip file is portable;
 it does not refer to the exporting computer's asset paths.
 
 Import retains record IDs. An existing record with different content stops the
@@ -82,10 +81,8 @@ to apply. Writers should use the shared transactional service when retention run
 
 ## Sign and verify bundles
 
-Screens creates an Ed25519 identity on the first signing or public-key export
-request. It uses Node's built-in cryptography. No key-generation tool, account,
-server, or additional installation is required. The private key stays in the
-registry's `signing/private.pem` file with mode `0600`.
+Screens creates an Ed25519 identity on first signing or public-key export. Its
+private key stays in `signing/private.pem` with mode `0600`.
 
 ```sh
 screens bundle-sign --file review.screens.gz --output review.signature.json
@@ -115,6 +112,4 @@ that an image shows live-account behavior or that a fix is accepted. The
 Backups retain the signing identity and trusted signers. Portable review bundles
 contain neither private keys nor trust settings.
 
-Screens stores evidence locally. Remote object-storage commands and external
-bucket configuration have been removed. Use portable bundles and local backups
-to move or preserve evidence.
+Use bundles to share local evidence and backups to preserve a whole registry.

@@ -24,12 +24,39 @@ Treat the request after the skill name as the workflow arguments, not as an arbi
 
 ## Load a project
 
-1. Identify the requested repository and read its agent instructions.
+1. Identify the requested repository and read its agent instructions. Run
+   `node "$SCREENS_HELPER" detect /absolute/project/path`. Review every detected
+   app and platform, including monorepo packages. Capture candidates are not
+   execution authorization or proof of complete screen coverage. Generate a draft
+   with `capture-draft PATH --output NEW_PLAN.json` when configuration is missing;
+   use its evidence and computed decisions to complete the capture setup. Fix the
+   configuration; do not maintain resolution flags. Use the same version 1
+   applications/scenarios recipe for working-tree and exact-commit capture.
 2. Find its stable registry project with `projects_list` or the helper’s `projects` command; reuse the ID. For a new project, derive a stable lowercase ID from its repository name and report it.
 3. Run `node "$SCREENS_HELPER" load /absolute/project/path --project PROJECT_ID`.
    Recognized manifests: screens.json, docs/picks/manifest.json,
    .artifacts/ui-review/manifest.json and docs/routing-comparison/manifest.json.
-4. If no manifest exists, inspect routes, stories and documented capture recipes.
+4. When the user requests fresh screenshots, run
+   `node "$SCREENS_HELPER" capture-auto /absolute/project/path --project PROJECT_ID`.
+   This executes app commands, captures supported frontends or native Xcode apps,
+   and imports the results. Use screens.capture.json for login state, dynamic routes,
+   native launch arguments, or project capture commands. Report every failed or
+   unsupported application and distinguish launch-only coverage from full flows.
+   Read inventory.json and coverage.json. Map source IDs to recipes with covers;
+   supply browser steps or native launch states for unresolved candidates. Report
+   screen, scenario and variant counts, readiness results, exclusions and scan warnings.
+   Read detected assets before adding recipes. Reuse scenario exports and fixture
+   records. Configure services and authentication in screens.capture.json instead of
+   writing a separate launcher. Resolve missing environment settings before execution.
+   Use fixture boundaries for mutable scenarios and readiness signals when the app
+   exposes them. Read screens.native.json for declared Apple screens and profiles.
+   Record the job ID. Use `capture-auto --resume JOB_ID` for interrupted work with
+   unchanged inputs; start a new job when source or recipe inputs change.
+   Terminal output is a summary; use `--format json` for the full result. Do not call a run complete
+   while required items are missing, failed or unresolved. Keep uncertain findings
+   in the optional backlog; do not require exclusions for every reusable component. Do not exclude failed
+   captures to raise coverage. Completeness applies only to the recorded inventory.
+   If no manifest exists and capture is not authorized, inspect routes, stories and documented capture recipes.
    Prepare screens.json using the Screens repository's examples/screens.json. State
    discovered coverage and missing captures. Do not call route discovery full coverage.
 5. Import existing evidence without executing capture commands. In Docker mode, use the helper for both load and serve so imports reach the same named volume. Start the review
@@ -98,6 +125,7 @@ invent artifacts. Evidence records are reporter-supplied and never an approval.
 
 ## Limits
 
-Screens has no native capture runner, change-to-screen dependency map, claim leases,
-background jobs or hosted authentication. Use documented CLI/MCP operations only.
+Automatic Apple captures require macOS and Xcode. Other native runtimes need a
+project capture command. Capturing launch screens does not prove full native
+coverage. Use documented CLI/MCP operations only. Screens has no hosted authentication.
 Preserve old evidence and notes. Never infer a visual match from file hash changes.

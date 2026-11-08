@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { detectProject } from "../src/discovery.mjs";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +12,8 @@ for (let i = 2; i < process.argv.length; i += 2) {
     throw Error("Use --project DIR [--client all|NAME,NAME] [--runtime local|docker] [--data DIR] [--port 4800] [--replace yes]");
   options[process.argv[i].slice(2)] = process.argv[i + 1];
 }
+if (options.capture && !["yes", "no"].includes(options.capture)) throw Error("Use --capture yes or no");
+if (options.capture === "yes" && !options.project) throw Error("Automatic capture requires --project DIR");
 const root = fileURLToPath(new URL("../", import.meta.url));
 if (!options.project) {
   const { installUserAgents } = await import("./install-user-agents.mjs");
@@ -23,6 +27,7 @@ if (!options.project || !["local", "docker"].includes(runtime))
 if (runtime === "docker" && options.data)
   throw Error("Docker uses the Compose registry volume; omit --data");
 const project = resolve(options.project);
+const detection = detectProject(project);
 const targets = [...new Set(clients.map((client) => agentClients[client].folder))].map((folder) => ({
   clients: clients.filter((client) => agentClients[client].folder === folder),
   directory: join(project, folder, "skills", "screens"),
@@ -55,6 +60,7 @@ for (const target of targets) {
 const connectionDirectory = join(project, ".screens");
 mkdirSync(join(connectionDirectory, "scripts"), { recursive: true });
 ignore(connectionDirectory, "*");
+writeFileSync(join(connectionDirectory, "detection.json"), json(detection));
 const helper = join(connectionDirectory, "scripts/screens.mjs");
 cpSync(join(root, "skills/screens/scripts/screens.mjs"), helper);
 writeFileSync(join(connectionDirectory, "screens-config.json"), json(config));
@@ -81,6 +87,8 @@ Run commands from this project directory:
 
 \`\`\`sh
 node .screens/scripts/screens.mjs help
+node .screens/scripts/screens.mjs detect .
+node .screens/scripts/screens.mjs capture-auto .
 node .screens/scripts/screens.mjs serve
 node .screens/scripts/screens.mjs load . --project PROJECT_ID
 \`\`\`
@@ -100,7 +108,7 @@ Screens in its own environment or an explicit tunnel to this loopback service.
 Do not expose this unauthenticated service publicly.
 
 Keep targets, implementation captures, and decisions distinct. Import does not
-execute capture commands. Run capture recipes only when the user authorizes them.
+execute capture commands. The capture-auto command and --capture yes execute project commands. Run them only when the user authorizes capture.
 Submit fixes with new capture evidence and the latest expected revision. Leave
 target approval and fix verification to a human reviewer. Do not infer acceptance
 from a zero pixel difference. Do not run tests unless the user or project requires them.
@@ -108,10 +116,21 @@ from a zero pixel difference. Do not run tests unless the user or project requir
 const instructionsFile = join(project, "AGENTS.md");
 const instructions = existsSync(instructionsFile) ? readFileSync(instructionsFile, "utf8") : "";
 const reference = "For Screens capture and review tasks, read [.screens/AGENTS.md](.screens/AGENTS.md).";
-if (!instructions.includes(reference))
-  writeFileSync(instructionsFile, instructions + (instructions.endsWith("\n") || !instructions ? "" : "\n") + `\n## Screens review\n\n${reference}\n`);
+if (!instructions.includes(reference)) {
+  const previousReference = /^For Screens capture and review tasks, read \[.*?\]\(.*?skills\/screens\/SKILL\.md\)\.$/m;
+  writeFileSync(instructionsFile, previousReference.test(instructions)
+    ? instructions.replace(previousReference, reference)
+    : instructions + (instructions.endsWith("\n") || !instructions ? "" : "\n") + `\n## Screens review\n\n${reference}\n`);
+}
 console.log(json({
+  detection,
   installed: targets, runtime, registry: config.data || "screens Compose volume",
   mcp: server, http: `${url}/mcp`, connections: connectionDirectory,
   guide: join(connectionDirectory, "AGENTS.md"),
 }));
+
+if (options.capture === "yes") {
+  const result = spawnSync(process.execPath, [helper, "capture-auto", project], { stdio: "inherit" });
+  if (result.error) throw result.error;
+  process.exitCode = result.status ?? 1;
+}

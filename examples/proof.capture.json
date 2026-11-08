@@ -1,10 +1,38 @@
 {
-  "schemaVersion": 1,
-  "adapter": "browser",
-  "project": { "id": "workflow-proof", "name": "Workflow proof fixture" },
-  "fixture": "project-overview-seed-1",
-  "prepare": [],
-  "serve": ["node", "examples/proof-app/server.mjs"],
-  "variants": [{ "device": "desktop", "width": 1280, "height": 900, "theme": "light", "locale": "en" }],
-  "screens": [{ "key": "overview", "title": "Project overview", "path": "/", "ready": "#app", "fullPage": true }]
+  "version": 1,
+  "scope": "configured",
+  "project": {
+    "id": "workflow-proof",
+    "name": "Workflow proof fixture"
+  },
+  "applications": [
+    {
+      "path": ".",
+      "adapter": "browser",
+      "fixture": "project-overview-seed-1",
+      "prepare": [],
+      "serve": [
+        "node",
+        "examples/proof-app/server.mjs"
+      ],
+      "variants": [
+        {
+          "device": "desktop",
+          "width": 1280,
+          "height": 900,
+          "theme": "light",
+          "locale": "en"
+        }
+      ],
+      "scenarios": [
+        {
+          "key": "overview",
+          "title": "Project overview",
+          "path": "/",
+          "ready": "#app",
+          "fullPage": true
+        }
+      ]
+    }
+  ]
 }

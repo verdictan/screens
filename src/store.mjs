@@ -60,16 +60,17 @@ export class Store {
     const outer = !this.transactionDepth;
     this.db.exec(outer ? "BEGIN IMMEDIATE" : `SAVEPOINT ${savepoint}`);
     this.transactionDepth = (this.transactionDepth || 0) + 1;
+    let result;
     try {
-      const result = fn();
+      result = fn();
       this.db.exec(outer ? "COMMIT" : `RELEASE ${savepoint}`);
-      return result;
     } catch (error) {
       this.db.exec(outer ? "ROLLBACK" : `ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`);
       throw error;
     } finally {
       this.transactionDepth--;
     }
+    return result;
   }
   requestFingerprint(operation, input) {
     const canonical = (value) => Array.isArray(value)

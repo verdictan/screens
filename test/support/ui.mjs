@@ -23,7 +23,7 @@ export async function until(fn, message = "UI did not settle") {
 }
 export async function ui(
   t,
-  { seed, respond, url = "http://127.0.0.1:4800" } = {},
+  { seed, respond, configure, url = "http://127.0.0.1:4800" } = {},
 ) {
   const f = await fixture(t);
   const state = seed ? await seed(f) : {};
@@ -71,6 +71,7 @@ export async function ui(
     unobserve() {}
     disconnect() {}
   };
+  configure?.(w);
   const path = "dist/ui" + html.match(/src="(\/assets\/[^" ]+\.js)"/)[1];
   new Script(readFileSync(path, "utf8"), {
     filename: resolve(path),

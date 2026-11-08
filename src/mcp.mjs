@@ -1,5 +1,4 @@
 import { requireThat } from "./validation.mjs";
-import { createDiff } from "./diff.mjs";
 import { actionCatalog, runHeadless } from "./headless.mjs";
 import { mutate } from "./operations.mjs";
 const string = { type: "string" };
@@ -19,7 +18,7 @@ export function mcpTools(store) {
       object({ run: string }, ["run"]), (a) => store.reviewSets(a.run)],
     ["review_sets_save", "Create or edit an ordered review set. Entries are screen + | + JSON.stringify(variant) from runs_compare. Use expectedRevision 0 to create.",
       object({ id: string, run: string, title: string, entries: { type: "array", items: string }, expectedRevision: { type: "integer" } }, ["run", "title", "entries", "expectedRevision"]),
-      (a) => store.saveReviewSet(a)],
+      "review-set"],
     [
       "diffs_create",
       "Measure pixel changes between exact captures. Region selects a normalized rectangle on both captures. Masks are integer pixel rectangles; scores do not decide acceptance.",
@@ -44,7 +43,7 @@ export function mcpTools(store) {
         },
         ["left", "right"],
       ),
-      (a) => createDiff(store, a),
+      "diff",
     ],
     [
       "diffs_view",
@@ -97,7 +96,7 @@ export function mcpTools(store) {
           "author",
         ],
       ),
-      (a) => store.addEvidence(a),
+      "evidence",
     ],
     [
       "evidence_list",
@@ -139,7 +138,7 @@ export function mcpTools(store) {
         },
         ["project", "key", "title"],
       ),
-      (a) => store.screen(a),
+      "screen",
     ],
     [
       "captures_register",
@@ -163,7 +162,7 @@ export function mcpTools(store) {
         },
         ["screen", "role", "imageBase64", "revision", "fixture", "provenance"],
       ),
-      (a) => store.capture(a),
+      "capture",
     ],
     [
       "captures_view",
@@ -226,7 +225,7 @@ export function mcpTools(store) {
         },
         ["capture", "text"],
       ),
-      (a) => store.addNote(a),
+      "note",
     ],
     [
       "reviews_submit_fix",
@@ -240,19 +239,15 @@ export function mcpTools(store) {
         },
         ["id", "expectedRevision", "evidence", "resolution"],
       ),
-      (a) => store.updateNote({ ...a, status: "submitted" }),
+      "note.submit",
     ],
   ];
-  const mutations = {
-    review_sets_save: "review-set", diffs_create: "diff", evidence_add: "evidence", screens_register: "screen",
-    captures_register: "capture", reviews_add_note: "note", reviews_submit_fix: "note.submit",
-  };
   const headless = actionCatalog().map(({ name, description, inputSchema }) => ({
     name: name.replaceAll("-", "_"), description, inputSchema,
     call: (input) => runHeadless(store, name, input),
   }));
   return [...tools.map(([name, description, inputSchema, call]) => {
-    const operation = mutations[name];
+    const operation = typeof call === "string" ? call : null;
     if (operation) inputSchema.properties.idempotencyKey = string;
     return {
       name, description, inputSchema,

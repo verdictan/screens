@@ -1,5 +1,8 @@
 # Evidence contracts
 
+Measurements and checks bind to exact captures. They never approve targets or
+verify fixes. See [Evidence tools](headless-evidence.md) for collectors and CI.
+
 ## Pixel comparison
 
 POST `/api/diffs` or call MCP `diffs_create`:
@@ -9,7 +12,7 @@ POST `/api/diffs` or call MCP `diffs_create`:
   "left": "LEFT_CAPTURE_ID",
   "right": "RIGHT_CAPTURE_ID",
   "threshold": 0,
-  "masks": [{ "x": 0, "y": 0, "width": 100, "height": 40 }]
+  "masks": [{"x": 0, "y": 0, "width": 100, "height": 40}]
 }
 ```
 
@@ -28,7 +31,10 @@ The persisted record includes exact capture IDs, input hashes, algorithm/decoder
 versions, threshold, masks, dimensions, counts and timestamp. A SHA-256 ID covers
 the measurement inputs. `GET /api/diffs/ID/image` returns its lossless PNG; pink is
 changed, blue excluded and pale grayscale unchanged. `diffs_view` returns both the
-metadata and MCP image content. A zero result does not approve the target or fix.
+metadata and MCP image content. A zero result records a measurement only.
+
+Optional `region` uses normalized `x`, `y`, `width`, and `height`. Counts and the
+difference artifact cover that crop; masks stay in original-image pixels.
 
 ## Semantic checks
 

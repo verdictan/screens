@@ -1,71 +1,52 @@
-# Tests and coverage
+# Testing
 
-Run the complete test suite from the Screens folder:
+Run checks only when requested or required by the repository workflow.
+From the Screens checkout:
 
 ```sh
 npm ci
 npm run test:all
 ```
 
-Installation supplies the package-local Chromium, Firefox, and WebKit engines,
-including their required system libraries on supported Linux systems.
+Installation supplies the managed browsers and supported Linux system libraries.
 
-To run the integration checks, including the managed three-browser capture job,
-OCR, signing, backups, and local scheduling:
+## Commands
 
-```sh
-npm run test:integration
-```
+| Command | Scope |
+| --- | --- |
+| `npm run test:all` | Syntax checks, coverage gate, and browser tests |
+| `npm test` | Unit/DOM tests; builds the UI first |
+| `npm run test:integration` | All integration suites: automatic capture, live HTTP/MCP, browser jobs, OCR, storage, signing, scheduling |
+| `npm run test:coverage` | Coverage and browser tests without the separate syntax check |
+| `npm run test:e2e` | Playwright suite |
+| `npm run check` | Repository checks |
+| `npm run build` | Normal production UI build |
 
-To run coverage and browser tests without the separate syntax check:
+Live integration needs permission to listen on loopback. For Docker restart and
+capture-to-review evidence, use the [standalone proof](standalone-proof.md).
+A command's documented scope does not mean the latest code has passed it.
 
-```sh
-npm run test:coverage
-```
+## Coverage
 
-The command fails if any included file has less than **100% line, statement,
-function, or branch coverage**. Files with no tests are included. The report
-covers all JavaScript and JSX in `src/`, `ui/`, `scripts/`, and the bundled
-`skills/screens/scripts/` helper. Dependencies, test files, and generated
-reports are outside that scope.
+The configured gate requires 100% lines, statements, functions, and branches per
+included JavaScript/JSX file, including files without tests. Scope includes
+`src/`, `ui/`, `scripts/`, the bundled skill helper, root JavaScript configuration,
+and the example app server. Dependencies, tests, and generated reports are excluded. CSS has browser assertions, not a coverage percentage.
 
-Open `coverage/index.html` for the readable report. `coverage/coverage-summary.json`
-and `coverage/coverage-final.json` contain the measured results. These files
-stay local and are ignored by Git.
+Local outputs are `coverage/index.html`, `coverage/coverage-summary.json`, and
+`coverage/coverage-final.json`. They stay ignored by Git.
 
-## What the tests exercise
+The coverage build preserves source maps. DOM tests collect UI coverage before
+closing. VM tests retain their contexts until the final coverage flush. Mapped
+paths resolve to original UI files. Playwright runs after the coverage gate. Its transformed module offsets are not merged into Node coverage.
+Both stages must pass. The Docker deployment spec requires the separate proof
+fixture and is skipped without it. Run `npm run build` to restore the normal
+production build.
 
-- Registry storage, immutable captures, feedback revisions, approvals, and persistence.
-- Manifest imports, comparisons, pixel differences, and evidence attachments.
-- HTTP, stdio MCP, and the HTTP bridge, including invalid requests and errors.
-- Capture configuration, process cleanup, browser failures, and changed PR heads.
-- Agent installation, command routing, packages, and setup failures.
-- UI navigation, filters, pins, uploads, approvals, image failures, and stale responses.
-- Verdictan colors, hover and focus states, and desktop and mobile layouts.
-- A browser workflow from fresh fixture captures through feedback, a submitted fix,
-  verification, and registry restart.
+## Evidence limits
 
-Unit tests use temporary databases and files. They replace GitHub calls, Docker
-commands, Windows process behavior, and deliberate failure conditions with
-controlled test substitutes. They do not create GitHub issues or change a live
-registry. The browser workflow runs real Chromium against a temporary application
-and local Screens service. It does not prove native-app behavior or execution
-inside every AI assistant.
-
-The 100% figure measures executable JavaScript and JSX. CSS colors and layout
-have browser assertions; CSS does not have a line or branch percentage here.
-Coverage is not a guarantee that every possible input or environment works.
-
-## How coverage is collected
-
-The coverage build preserves source maps and readable generated code. The UI tests
-execute that build in a browser-like DOM and record coverage before closing it.
-Source map paths resolve to the original UI files so UI branches are measured.
-
-Browser tests run after the coverage gate. Playwright transforms server modules,
-so its transformed offsets must not be merged with Node's original-source coverage.
-Both stages must pass for the command to succeed. No GitHub Actions run is needed.
-
-`npm run build` restores the normal production build after a coverage run.
-The separate Docker deployment and container-restart proof remains available
-through `scripts/prove-workflow.sh` as described in the deployment guide.
+Unit tests use temporary files/databases and controlled substitutes for GitHub,
+Docker, platform behavior, and failures. Browser workflows use real Chromium and
+temporary local services. Coverage and fixture tests do not prove native apps,
+live accounts, every runtime environment, or full AI-client sessions.
+Historical results are in [Recorded validation](validation.md).
