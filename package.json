@@ -89,6 +89,7 @@
     "package-lock.json"
   ],
   "allowScripts": {
-    "dugite@3.3.2": true
+    "dugite@3.3.2": true,
+    "tesseract.js@7.0.0": false
   }
 }
