@@ -154,14 +154,17 @@ remaining work are in the [Roadmap](roadmap.md).
 
 ## Workflow ownership
 
-`src/workflows.mjs` defines shared job, feedback and fixture rules, capture-plan
-phases, and the stateful-area inventory. The registry, workers, review queue, UI and agent
+`src/workflows.mjs` defines shared job, feedback, fixture and browser observation
+rules, capture-plan phases, CI result states, and the stateful-area inventory. The registry, workers, review queue, UI and agent
 catalog use these definitions. UI reducers in `ui/lib/workflows.js` own capture
 preparation, recipe editing, resource loading, image loading, area selection and
 annotation gestures. Capture dialogs snapshot their review context on open;
 request ownership prevents late completions from changing a later dialog session.
 Fixture operations run in order. Fixture and service cleanup callers share one
-completion result.
+completion result. Browser observations retain ownership across screenshot
+creation; attachment commits the derived records, notes and accessibility report
+in one registry transaction. CI status and next actions share one classification
+of recorded checks and explicit policy skips.
 
 Use `screens workflow-catalog`, MCP `workflow_catalog`, or `GET /api/workflows`
 to read the contract. Job reads include available user actions. Task reads include

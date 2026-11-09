@@ -74,6 +74,8 @@ service-layer checks still decide each write.
 | motion | `ui/lib/motion.js` (local) | Held, moving, interrupted or resting; reduced motion is a rendering preference. |
 | standard-controls | `ui/components/ui/` (library) | Radix and Vaul own dialog, drawer, tab, toggle and focus transitions. |
 | measurement-outcome | `src/diff.mjs` (immutable) | Measured or dimension mismatch; pixel evidence does not decide acceptance. |
+| browser-observation | `src/evidence-tools.mjs` (shared) | Listening, collecting or disposed; reset and main-frame navigation invalidate an observation before it can attach to a screenshot. |
+| ci-policy | `src/evidence-tools.mjs` (derived) | Passed, failed, pending or incomplete; explicit policy skips are separate from missing required observations and human acceptance. |
 | evidence-outcome | `src/evidence-tools.mjs` (immutable) | Reported pass, fail or not run; CI completion and human acceptance are separate. |
 | storage-operation | `src/storage-tools.mjs` (transactional) | Prepare assets, write immutable records, commit or roll back; retention follows reachability. |
 | pagination | `src/automation.mjs` (local) | Start, advance and exhaust a query-bound snapshot cursor. |
@@ -118,12 +120,32 @@ including stopping, stopped and stop failure. A service can have reached ready
 successfully and later have stopped during normal cleanup. These facts remain
 separate in reports.
 
+## Browser observations and CI results
+
+Browser evidence collection owns a generation and main-frame navigation identity.
+Its phases are listening, collecting and disposed. Reset, disposal or navigation
+invalidates an unfinished observation. The browser capture adapter checks the
+same identity after screenshot creation. A changed observation fails that capture
+attempt instead of attaching mismatched evidence. Registration of its derived
+records, selector comments and accessibility report uses one registry transaction.
+
+CI results derive passed, failed, pending or incomplete from the recorded checks
+and policy. Explicit `failOnMissing: false` skips stay allowed. Incomplete required
+accessibility results cannot count as a pass. A failure has priority over pending
+work for the exit code, while completion remains a separate fact. Reports include
+next actions and the original arguments for an explicit re-evaluation. Neither
+the state calculation nor report export changes human acceptance.
+
+The catalog treats CI evaluation as an immutable result, not a mutable job.
+Detailed states and exit codes are in [Evidence tools](headless-evidence.md#ci-policies).
+
 ## Boundaries retained
 
 No database migration is needed. Captures, runs and measurements stay immutable.
 Existing persisted status names stay in use. Existing revision checks, evidence
 requirements, source fingerprints and execution authorization remain in place. The capture
-engine fingerprint includes the shared workflow contract.
+engine fingerprint includes the shared workflow contract and browser evidence
+collector.
 Import and discovery do not start capture commands. A ready app, measured pixel
 match or passing CI report cannot approve a design or verify a fix.
 

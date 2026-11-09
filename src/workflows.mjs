@@ -38,6 +38,30 @@ export const workflows = {
     },
     concurrency: "expectedRevision for user actions; token and unexpired lease for workers",
   },
+  observation: {
+    owner: "src/evidence-tools.mjs", initial: "listening",
+    states: { listening: {}, collecting: {}, disposed: { terminal: true } },
+    events: {
+      collect: { from: ["listening"], to: "collecting" },
+      finish: { from: ["collecting"], to: "listening" },
+      reset: { from: ["listening", "collecting"], to: ["listening", "collecting"], effect: "invalidate the current observation generation" },
+      dispose: { from: ["listening", "collecting", "disposed"], to: "disposed" },
+    },
+    concurrency: "one collection per page; reset, main-frame navigation and disposal invalidate observation ownership",
+  },
+  ci: {
+    owner: "src/evidence-tools.mjs", kind: "derived",
+    states: {
+      passed: { passed: true, exitCode: 0 },
+      failed: { passed: false, exitCode: 1 },
+      pending: { passed: false, exitCode: 2 },
+      incomplete: { passed: false, exitCode: 2 },
+    },
+    inputs: ["recorded checks", "policy", "observed job states"],
+    precedence: ["failed", "pending", "incomplete", "passed"],
+    acceptance: "not-assessed",
+    persistence: "immutable result; re-evaluation creates a new result when inputs change",
+  },
   fixture: {
     owner: "src/fixture-boundaries.mjs", initial: "idle",
     states: { idle: {}, waiting: {}, "setting-up": {}, resetting: {}, active: {}, "tearing-down": {}, failed: {}, closed: { terminal: true } },
@@ -99,6 +123,8 @@ export const workflowInventory = [
   ["motion", "local", "ui/lib/motion.js", "Held, moving, interrupted or resting; reduced motion is a rendering preference."],
   ["standard-controls", "library", "ui/components/ui/", "Radix and Vaul own dialog, drawer, tab, toggle and focus transitions."],
   ["measurement-outcome", "immutable", "src/diff.mjs", "Measured or dimension mismatch; pixel evidence does not decide acceptance."],
+  ["browser-observation", "shared", "src/evidence-tools.mjs", "Listening, collecting or disposed; reset and main-frame navigation invalidate an observation before it can attach to a screenshot."],
+  ["ci-policy", "derived", "src/evidence-tools.mjs", "Passed, failed, pending or incomplete; explicit policy skips are separate from missing required observations and human acceptance."],
   ["evidence-outcome", "immutable", "src/evidence-tools.mjs", "Reported pass, fail or not run; CI completion and human acceptance are separate."],
   ["storage-operation", "transactional", "src/storage-tools.mjs", "Prepare assets, write immutable records, commit or roll back; retention follows reachability."],
   ["pagination", "local", "src/automation.mjs", "Start, advance and exhaust a query-bound snapshot cursor."],
@@ -129,4 +155,30 @@ export function feedbackTaskWorkflow(note) {
     : note.status === "submitted" ? { kind: "wait", reason: "Human review is pending" }
     : { kind: "submit", tool: "reviews_submit_fix", arguments: { id: note.id, expectedRevision: note.revision }, required: ["evidence", "resolution"] };
   return { machine: "feedback", state: note.status, nextAction, acceptance: "human-only" };
+}
+
+function ciCheckState(check, policy) {
+  if (check.status === "pass") return "passed";
+  if (check.status === "fail") return "failed";
+  if (check.rule === "capture-job" && check.status === "not-run") return "pending";
+  if (check.status === "not-run" && policy.failOnMissing === false && ["capture-pair", "capture-coverage"].includes(check.rule)) return "skipped";
+  return "incomplete";
+}
+
+export function ciPolicyState(checks, policy = {}) {
+  const states = checks.map(check => ciCheckState(check, policy));
+  const pending = states.includes("pending"), incomplete = states.includes("incomplete");
+  const status = workflows.ci.precedence.find(state => states.includes(state)) || "passed";
+  return { status, ...workflows.ci.states[status], complete: !pending && !incomplete };
+}
+
+export function ciNextActions(checks, policy = {}) {
+  const actions = [];
+  const failures = checks.filter(check => ciCheckState(check, policy) === "failed");
+  const jobs = checks.filter(check => ciCheckState(check, policy) === "pending");
+  const missing = checks.filter(check => ciCheckState(check, policy) === "incomplete");
+  if (failures.length) actions.push({ kind: "resolve-failures", checks: failures.map(check => ({ rule: check.rule, capture: check.capture, job: check.job, message: check.message })) });
+  if (jobs.length) actions.push({ kind: "wait-for-jobs", jobs: jobs.map(check => check.job) });
+  if (missing.length) actions.push({ kind: "complete-evidence", checks: missing.map(check => ({ rule: check.rule, capture: check.capture, message: check.message })) });
+  return actions.length ? actions : [{ kind: "none", reason: "No failed or unfinished required checks; human acceptance is not assessed" }];
 }

@@ -1,4 +1,4 @@
-import { jobPending } from "./workflows.mjs";
+import { workflows, jobPending, ciPolicyState, ciNextActions } from "./workflows.mjs";
 import sharp from "sharp";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
@@ -303,7 +303,15 @@ async function fontReport(page) {
 }
 
 export function startBrowserEvidence(page, settings = {}) {
-  let consoleItems = [], networkItems = [], generation = 0;
+  let consoleItems = [], networkItems = [], generation = 0, navigation = 0;
+  let phase = workflows.observation.initial;
+  const checkpoint = () => {
+    requireThat(phase !== "disposed", "Browser evidence collector is disposed", 409);
+    return { generation, navigation };
+  };
+  const assertCurrent = identity => requireThat(phase !== "disposed" && identity.generation === generation && identity.navigation === navigation,
+    "Browser observation changed during collection or capture; collect the intended state again", 409);
+  const onNavigation = frame => { if (frame === page.mainFrame()) navigation++; };
   const onConsole = (message) => consoleItems.push({ type: message.type(), text: message.text(), location: message.location() });
   const onError = (error) => consoleItems.push({ type: "pageerror", text: error.message, stack: error.stack });
   const onRequestFailed = (request) => {
@@ -315,48 +323,59 @@ export function startBrowserEvidence(page, settings = {}) {
     if (response.status() >= 400 && requestGenerations.get(response.request()) === generation)
       networkItems.push({ type: "http-error", url: response.url(), status: response.status(), method: response.request().method(), resourceType: response.request().resourceType() });
   };
+  page.on("framenavigated", onNavigation);
   if (settings.console) { page.on("console", onConsole); page.on("pageerror", onError); }
   if (settings.network) { page.on("request", onRequest); page.on("requestfailed", onRequestFailed); page.on("response", onResponse); }
   return {
-    reset() { consoleItems = []; networkItems = []; generation++; },
+    checkpoint, assertCurrent, get phase() { return phase; },
+    reset() { checkpoint(); consoleItems = []; networkItems = []; generation++; },
     async collect({ fullPage = true, fixture, selectors = settings.selectors || [] } = {}) {
-      const collected = {};
-      if (settings.dom) collected.dom = { url: page.url(), title: await page.title(), html: await page.content() };
-      if (settings.fonts) collected.fonts = await fontReport(page);
-      if (selectors.length) {
-        const items = [];
-        for (const specification of selectors) {
-          const selector = typeof specification === "string" ? specification : specification.selector;
-          const locator = page.locator(selector);
-          const count = await locator.count();
-          requireThat(count === 1, `Selector ${selector} must match one element; matched ${count}`);
-          const geometry = await locator.evaluate((element, fullPage) => {
-            const root = document.documentElement, body = document.body;
-            const width = fullPage ? Math.max(root.scrollWidth, root.clientWidth, body?.scrollWidth || 0, body?.offsetWidth || 0) : innerWidth;
-            const height = fullPage ? Math.max(root.scrollHeight, root.clientHeight, body?.scrollHeight || 0, body?.offsetHeight || 0) : innerHeight;
-            const rect = element.getBoundingClientRect();
-            const left = Math.max(0, rect.left + (fullPage ? scrollX : 0));
-            const top = Math.max(0, rect.top + (fullPage ? scrollY : 0));
-            const right = Math.min(width, rect.right + (fullPage ? scrollX : 0));
-            const bottom = Math.min(height, rect.bottom + (fullPage ? scrollY : 0));
-            return { width, height, region: right > left && bottom > top ? { x: left / width, y: top / height, width: (right - left) / width, height: (bottom - top) / height } : null };
-          }, fullPage);
-          items.push({ ...(typeof specification === "string" ? {} : specification), selector, ...geometry });
+      requireThat(phase === "listening", "Browser evidence collection requires a listening collector", 409);
+      const identity = checkpoint();
+      phase = workflows.observation.events.collect.to;
+      try {
+        const collected = {};
+        if (settings.dom) collected.dom = { url: page.url(), title: await page.title(), html: await page.content() };
+        if (settings.fonts) collected.fonts = await fontReport(page);
+        if (selectors.length) {
+          const items = [];
+          for (const specification of selectors) {
+            const selector = typeof specification === "string" ? specification : specification.selector;
+            const locator = page.locator(selector);
+            const count = await locator.count();
+            requireThat(count === 1, `Selector ${selector} must match one element; matched ${count}`);
+            const geometry = await locator.evaluate((element, fullPage) => {
+              const root = document.documentElement, body = document.body;
+              const width = fullPage ? Math.max(root.scrollWidth, root.clientWidth, body?.scrollWidth || 0, body?.offsetWidth || 0) : innerWidth;
+              const height = fullPage ? Math.max(root.scrollHeight, root.clientHeight, body?.scrollHeight || 0, body?.offsetHeight || 0) : innerHeight;
+              const rect = element.getBoundingClientRect();
+              const left = Math.max(0, rect.left + (fullPage ? scrollX : 0));
+              const top = Math.max(0, rect.top + (fullPage ? scrollY : 0));
+              const right = Math.min(width, rect.right + (fullPage ? scrollX : 0));
+              const bottom = Math.min(height, rect.bottom + (fullPage ? scrollY : 0));
+              return { width, height, region: right > left && bottom > top ? { x: left / width, y: top / height, width: (right - left) / width, height: (bottom - top) / height } : null };
+            }, fullPage);
+            items.push({ ...(typeof specification === "string" ? {} : specification), selector, ...geometry });
+          }
+          collected.selectors = { fullPage, items };
         }
-        collected.selectors = { fullPage, items };
-      }
-      if (settings.accessibility) {
-        const { default: axe } = await import("axe-core");
-        await page.evaluate(axe.source);
-        const config = settings.accessibility === true ? {} : settings.accessibility;
-        collected.accessibility = await page.evaluate(async ({ context, options }) => globalThis.axe.run(context || document, options || {}), config);
-      }
-      if (fixture && typeof fixture === "object") collected.fixture = fixture;
-      if (settings.console) collected.console = { items: [...consoleItems] };
-      if (settings.network) collected.network = { items: [...networkItems] };
-      return collected;
+        if (settings.accessibility) {
+          const { default: axe } = await import("axe-core");
+          await page.evaluate(axe.source);
+          const config = settings.accessibility === true ? {} : settings.accessibility;
+          collected.accessibility = await page.evaluate(async ({ context, options }) => globalThis.axe.run(context || document, options || {}), config);
+        }
+        if (fixture && typeof fixture === "object") collected.fixture = fixture;
+        if (settings.console) collected.console = { items: [...consoleItems] };
+        if (settings.network) collected.network = { items: [...networkItems] };
+        assertCurrent(identity);
+        return collected;
+      } finally { if (phase === "collecting") phase = workflows.observation.events.finish.to; }
     },
     dispose() {
+      if (phase === "disposed") return;
+      phase = workflows.observation.events.dispose.to; generation++;
+      page.off("framenavigated", onNavigation);
       page.off("console", onConsole); page.off("pageerror", onError);
       page.off("request", onRequest); page.off("requestfailed", onRequestFailed); page.off("response", onResponse);
     },
@@ -364,27 +383,29 @@ export function startBrowserEvidence(page, settings = {}) {
 }
 
 export function attachBrowserEvidence(store, captureId, collected) {
-  const records = Object.entries(collected).map(([kind, data]) => saveDerived(store, captureId, kind, data, "browser-observation-v1"));
-  const notes = [];
-  for (const item of collected.selectors?.items || []) if (item.text && item.region) {
-    const author = item.author || "capture recipe";
-    const previous = store.getScreen(store.getCapture(captureId).screen).notes.find((note) =>
-      note.capture === captureId && note.text === item.text && note.author === author && json(note.region) === json(item.region));
-    notes.push(previous || store.addNote({ capture: captureId, text: item.text, author, region: item.region }));
-  }
-  let accessibilityEvidence = null;
-  if (collected.accessibility) {
-    const report = collected.accessibility;
-    const existing = store.listEvidence({ capture: captureId }).find((item) => item.artifact?.hash === hash(Buffer.from(JSON.stringify(report))) && item.kind === "accessibility");
-    accessibilityEvidence = existing || store.addEvidence({ capture: captureId, kind: "accessibility", method: "automated",
-      outcome: report.violations.length ? "fail" : report.incomplete.length ? "not-run" : "pass",
-      assertion: "Configured axe-core rules report no violations in the captured document",
-      procedure: "Run axe-core against the rendered browser document immediately before capture",
-      observation: `${report.violations.length} violations; ${report.incomplete.length} results need review; ${report.passes.length} rules passed. This does not establish complete accessibility.`,
-      author: `axe-core ${report.testEngine?.version || "unknown"}`,
-      artifactBase64: Buffer.from(JSON.stringify(report)).toString("base64"), artifactType: "application/json" });
-  }
-  return { records, notes, accessibilityEvidence };
+  return store.transaction(() => {
+    const records = Object.entries(collected).map(([kind, data]) => saveDerived(store, captureId, kind, data, "browser-observation-v1"));
+    const notes = [];
+    for (const item of collected.selectors?.items || []) if (item.text && item.region) {
+      const author = item.author || "capture recipe";
+      const previous = store.getScreen(store.getCapture(captureId).screen).notes.find((note) =>
+        note.capture === captureId && note.text === item.text && note.author === author && json(note.region) === json(item.region));
+      notes.push(previous || store.addNote({ capture: captureId, text: item.text, author, region: item.region }));
+    }
+    let accessibilityEvidence = null;
+    if (collected.accessibility) {
+      const report = collected.accessibility;
+      const existing = store.listEvidence({ capture: captureId }).find((item) => item.artifact?.hash === hash(Buffer.from(JSON.stringify(report))) && item.kind === "accessibility");
+      accessibilityEvidence = existing || store.addEvidence({ capture: captureId, kind: "accessibility", method: "automated",
+        outcome: report.violations.length ? "fail" : report.incomplete.length ? "not-run" : "pass",
+        assertion: "Configured axe-core rules report no violations in the captured document",
+        procedure: "Run axe-core against the rendered browser document immediately before capture",
+        observation: `${report.violations.length} violations; ${report.incomplete.length} results need review; ${report.passes.length} rules passed. This does not establish complete accessibility.`,
+        author: `axe-core ${report.testEngine?.version || "unknown"}`,
+        artifactBase64: Buffer.from(JSON.stringify(report)).toString("base64"), artifactType: "application/json" });
+    }
+    return { records, notes, accessibilityEvidence };
+  });
 }
 
 export async function evaluateCI(store, input) {
@@ -420,8 +441,9 @@ export async function evaluateCI(store, input) {
     }
     if (policy.maxAccessibilityViolations !== undefined) {
       const evidence = latestDerived(store, right.id, "accessibility");
-      const count = evidence?.data.violations.length;
-      add(entry, "accessibility", count !== undefined && count <= policy.maxAccessibilityViolations ? "pass" : "fail", count === undefined ? "Accessibility evidence missing" : `${count} rule violations`, { derived: evidence?.id || null });
+      const count = evidence?.data.violations.length, incomplete = evidence?.data.incomplete?.length || 0;
+      const status = count === undefined || count > policy.maxAccessibilityViolations ? "fail" : incomplete ? "not-run" : "pass";
+      add(entry, "accessibility", status, count === undefined ? "Accessibility evidence missing" : `${count} rule violations; ${incomplete} results need review`, { derived: evidence?.id || null });
     }
     for (const [kind, enabled, bad] of [
       ["console", policy.failOnConsoleErrors, (item) => ["error", "pageerror"].includes(item.type)],
@@ -436,12 +458,10 @@ export async function evaluateCI(store, input) {
     }
   }
   for (const screen of run?.uncoveredScreens || []) checks.push({ screen: screen.id, title: screen.title, rule: "capture-coverage", status: policy.failOnMissing === false ? "not-run" : "fail", message: "Registered screen has no captures in this run", capture: null });
-  let pendingJobs = false;
   for (const id of input.jobs || []) {
     const job = parse(store.db.prepare("SELECT data FROM capture_jobs WHERE id=?").get(id));
     requireThat(job, `Capture job not found: ${id}`, 404);
     const pending = jobPending(job);
-    pendingJobs ||= pending;
     checks.push({ screen: job.config?.project?.id || "capture", title: job.title || id, job: id,
       capture: null, rule: "capture-job", status: job.status === "completed" ? "pass" : pending ? "not-run" : "fail",
       message: job.error ? typeof job.error === "string" ? job.error : JSON.stringify(job.error) : `Capture job ${job.status}`,
@@ -449,10 +469,12 @@ export async function evaluateCI(store, input) {
     });
   }
   requireThat(checks.length > 0, "Policy did not select any checks");
-  const failed = checks.some((check) => check.status === "fail");
+  const result = ciPolicyState(checks, policy);
+  const recheck = { tool: "ci_evaluate", arguments: { ...(input.run ? { run: input.run } : {}), ...(input.jobs?.length ? { jobs: input.jobs } : {}), policy } };
   const report = { run: run?.id || null, title: run?.title || "Capture jobs", source: run?.source || null,
-    jobs: input.jobs || [], policy, checks, passed: !failed && !pendingJobs,
-    complete: !pendingJobs, exitCode: failed ? 1 : pendingJobs ? 2 : 0, acceptance: "not-assessed", algorithm: "ci-policy-v1" };
+    jobs: input.jobs || [], policy, checks, ...result,
+    workflow: { machine: "ci", state: result.status, nextActions: ciNextActions(checks, policy), recheck },
+    acceptance: "not-assessed", algorithm: "ci-policy-v2" };
   const id = hash(json(report));
   const value = { id, ...report, createdAt: now() };
   store.db.prepare("INSERT OR IGNORE INTO ci_reports VALUES (?,?)").run(id, JSON.stringify(value));
@@ -464,18 +486,19 @@ const escapeMarkdown = (value) => String(value).replace(/[\\`*_{}\[\]<>|]/g, "\\
 
 export function formatReport(store, report, format) {
   if (format === "json") return JSON.stringify(report, null, 2) + "\n";
+  const result = ciPolicyState(report.checks, report.policy);
   if (format === "junit") {
     const cases = report.checks.map((check) => {
       const result = check.status === "fail" ? `<failure message="${escapeXml(check.message)}">${escapeXml(JSON.stringify(check))}</failure>` : check.status === "not-run" ? `<skipped message="${escapeXml(check.message)}"/>` : "";
       return `    <testcase classname="${escapeXml(check.screen)}" name="${escapeXml(check.rule + (check.variant ? ` ${JSON.stringify(check.variant)}` : ""))}">${result}</testcase>`;
     });
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites><testsuite name="${escapeXml(report.title)}" tests="${report.checks.length}" failures="${report.checks.filter((check) => check.status === "fail").length}" skipped="${report.checks.filter((check) => check.status === "not-run").length}">\n${cases.join("\n")}\n</testsuite></testsuites>\n`;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites><testsuite name="${escapeXml(report.title)}" tests="${report.checks.length}" failures="${report.checks.filter((check) => check.status === "fail").length}" skipped="${report.checks.filter((check) => check.status === "not-run").length}">\n    <properties><property name="screens.status" value="${result.status}"/><property name="screens.acceptance" value="not-assessed"/></properties>\n${cases.join("\n")}\n</testsuite></testsuites>\n`;
   }
   if (format === "sarif") {
     const rules = [...new Set(report.checks.map((check) => check.rule))];
     return JSON.stringify({ version: "2.1.0", $schema: "https://json.schemastore.org/sarif-2.1.0.json", runs: [{ tool: { driver: {
       name: "Screens", informationUri: "https://github.com/verdictan/screens", rules: rules.map((id) => ({ id, shortDescription: { text: id } })),
-    } }, invocations: [{ executionSuccessful: true }], results: report.checks.filter((check) => check.status === "fail").map((check) => {
+    } }, invocations: [{ executionSuccessful: result.complete, properties: { status: result.status, acceptance: "not-assessed" } }], results: report.checks.filter((check) => check.status === "fail").map((check) => {
       const link = check.capture ? sourceLinks(store, { capture: check.capture })[0] : null;
       return { ruleId: check.rule, ruleIndex: rules.indexOf(check.rule), level: "error", message: { text: check.message },
         locations: link ? [{ physicalLocation: { artifactLocation: { uri: link.file.split("/").map(encodeURIComponent).join("/"), uriBaseId: "%SRCROOT%" }, ...(link.line ? { region: { startLine: link.line } } : {}) } }] : [{ logicalLocations: [{ fullyQualifiedName: check.screen, kind: "resource" }] }],
@@ -484,7 +507,7 @@ export function formatReport(store, report, format) {
     }) }] }, null, 2) + "\n";
   }
   requireThat(format === "markdown", "Use json, junit, sarif, or markdown");
-  const lines = [`# ${escapeMarkdown(report.title)}`, "", `CI policy: **${report.passed ? "passed" : "failed"}**. Human acceptance is not assessed.`, "", "| Screen | Check | Result | Details |", "| --- | --- | --- | --- |"];
+  const lines = [`# ${escapeMarkdown(report.title)}`, "", `CI policy: **${result.status}**. Human acceptance is not assessed.`, "", "| Screen | Check | Result | Details |", "| --- | --- | --- | --- |"];
   for (const check of report.checks) lines.push(`| ${escapeMarkdown(check.title || check.screen)} | ${escapeMarkdown(check.rule)} | ${check.status} | ${escapeMarkdown(check.message)} |`);
   return lines.join("\n") + "\n";
 }

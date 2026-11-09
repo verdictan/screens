@@ -52,6 +52,14 @@ Fonts are enabled by default; other optional collectors need explicit settings:
 - `environment`: browser and runtime metadata supplied by the capture runner.
 - `fixture`: structured fixture metadata supplied by the capture runner.
 
+The collector moves from listening to collecting, then back to listening.
+Disposal is terminal. One page has one active collection at a time. Reset or
+main-frame navigation invalidates an in-progress observation. The capture runner
+checks the same observation identity after screenshot creation, before registering
+the image. This detects navigation between observation and capture; it does not
+freeze all dynamic page content. Derived records, generated area comments and
+accessibility evidence attach in one registry transaction.
+
 Read a collector result without opening the UI:
 
 ```sh
@@ -193,11 +201,31 @@ screens ci_evaluate --input ci-policy.json
 
 To report capture jobs, supply `jobs` with job IDs. A `run` is optional for a
 job-only report. Failed and cancelled jobs become failed checks; queued and
-running jobs become skipped checks and return exit code 2. Completed jobs pass
-the capture execution check without approving their resulting images.
+running jobs become skipped checks. Completed jobs pass the capture execution
+check without approving their resulting images.
 
-The result includes `exitCode`, `passed`, individual checks, and a stored report
-ID. The CLI uses the returned exit code. Policies run only when invoked.
+The result includes `status`, `exitCode`, `passed`, `complete`, individual checks,
+and a stored report ID. The CLI uses the returned exit code. Policies run only
+when invoked.
+
+| Status | Meaning | Exit code |
+| --- | --- | --- |
+| `passed` | No failed or unfinished required checks | 0 |
+| `failed` | At least one check failed; other work can still be pending | 1 |
+| `pending` | Capture jobs have not finished and no check has failed | 2 |
+| `incomplete` | Required observations need review and no check has failed | 2 |
+
+`complete` is false while jobs or required observations remain unfinished, even
+when a separate check has already failed. For an accessibility threshold, an axe
+report with incomplete results is not a pass when its violation count is within
+the threshold. Exceeding the threshold is a failure. Inspect unresolved results
+and obtain conclusive evidence or explicitly change the policy scope.
+
+`workflow.nextActions` identifies failures to resolve, jobs to wait for, or
+observations to complete. `workflow.recheck` supplies the `ci_evaluate` action
+and its original arguments. Re-evaluation remains explicit and writes a new
+immutable result when the observations change. These reports use `ci-policy-v2`;
+existing reports are not rewritten.
 Missing required evidence fails the corresponding check. Missing capture pairs
 and uncovered screens fail unless `failOnMissing` is `false`, which reports them
 as not run. Pixel checks create or reuse immutable pixel measurements.
@@ -225,7 +253,9 @@ screens report_export --report REPORT_ID --format markdown --output result.md
 
 Supported formats are `sarif`, `junit`, `markdown`, and `json`. SARIF uses version
 2.1.0 and includes source links when recorded. JUnit includes failed and skipped
-checks. File export creates a new file and does not overwrite an existing report.
+checks plus the derived policy status. Markdown distinguishes pending and
+incomplete results from failures. SARIF marks unfinished policy execution as
+incomplete through its invocation result and records the policy status. File export creates a new file and does not overwrite an existing report.
 
 ## Pull-request review package
 
