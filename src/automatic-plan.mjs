@@ -27,6 +27,7 @@ export function configurationDecisions(config, detection, proposals = []) {
     if (proposal.kind === "scenario-import") open = !(app?.scenarioImports || []).some(item => proposal.evidence.includes(item.file));
     if (proposal.kind === "readiness") open = !app?.ready && !(app?.scenarios?.length && app.scenarios.every(item => item.ready)) && !detection.assets.readiness.some(item => item.application === app?.path);
     if (proposal.kind === "environment") {
+      if ((app?.optionalEnv || []).includes(proposal.name)) continue;
       const values = {};
       for (const cwd of [detection.root, resolve(detection.root, app?.path || ".")]) for (const name of [".env", ".env.development", ".env.local", ".env.development.local", ...(config.envFiles || []), ...(app?.envFiles || [])]) {
         const file = resolve(cwd, name); if (existsSync(file)) Object.assign(values, parseEnv(readFileSync(file, "utf8")));
@@ -57,7 +58,7 @@ export function automaticInput(path, options = {}) {
     if (existsSync(path)) environment.push({ path, hash: createHash("sha256").update(readFileSync(path)).digest("hex") });
   }
   const names = new Set([...detection.assets.environment.map(item => item.name), ...JSON.stringify(config).matchAll(/\{env\.([\w]+)\}/g)].map(item => typeof item === "string" ? item : item[1]));
-  const engine = ["auto-capture.mjs", "automatic-plan.mjs", "capture-recipe.mjs", "capture-process.mjs", "automation.mjs", "automatic-worker.mjs", "capture-environment.mjs", "capture-scenarios.mjs", "fixture-boundaries.mjs", "native-contract.mjs", "source-graph.mjs", "screen-inventory.mjs", "discovery.mjs", "capture-assets.mjs", "../scripts/capture-macos.swift", "../package-lock.json"].map(file => createHash("sha256").update(readFileSync(fileURLToPath(new URL(file, import.meta.url)))).digest("hex"));
+  const engine = ["auto-capture.mjs", "automatic-plan.mjs", "capture-recipe.mjs", "capture-process.mjs", "automation.mjs", "workflows.mjs", "automatic-worker.mjs", "capture-environment.mjs", "capture-scenarios.mjs", "fixture-boundaries.mjs", "native-contract.mjs", "source-graph.mjs", "screen-inventory.mjs", "discovery.mjs", "capture-assets.mjs", "../scripts/capture-macos.swift", "../package-lock.json"].map(file => createHash("sha256").update(readFileSync(fileURLToPath(new URL(file, import.meta.url)))).digest("hex"));
   const inputHash = identityHash({ version: 1, engine, source: detection.inputs, config, selection: { profile: options.profile, url: options.url }, environment, inherited: [...names].sort().map(name => [name, Object.hasOwn(config.env || {}, name) ? "configured" : process.env[name] || null]), node: process.version });
   return { root, detection, config, inputHash, decisions, configPath: options.config ? file : existsSync(file) ? file : null };
 }

@@ -1,7 +1,7 @@
 import { cva } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 const variants = cva(
-  "inline-flex w-fit shrink-0 items-center gap-1 text-[11px] font-medium whitespace-nowrap",
+  "inline-flex w-fit shrink-0 items-center gap-1 text-xs font-medium whitespace-nowrap",
   {
     variants: {
       variant: {

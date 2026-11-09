@@ -1,3 +1,4 @@
+import { jobPending } from "./workflows.mjs";
 import sharp from "sharp";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
@@ -439,7 +440,7 @@ export async function evaluateCI(store, input) {
   for (const id of input.jobs || []) {
     const job = parse(store.db.prepare("SELECT data FROM capture_jobs WHERE id=?").get(id));
     requireThat(job, `Capture job not found: ${id}`, 404);
-    const pending = ["queued", "running"].includes(job.status);
+    const pending = jobPending(job);
     pendingJobs ||= pending;
     checks.push({ screen: job.config?.project?.id || "capture", title: job.title || id, job: id,
       capture: null, rule: "capture-job", status: job.status === "completed" ? "pass" : pending ? "not-run" : "fail",

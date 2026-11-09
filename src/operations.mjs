@@ -5,7 +5,7 @@ export async function mutate(store, operation, input, idempotencyKey) {
   const replay = store.replay(idempotencyKey, operation, input);
   if (replay) return replay;
   let diff;
-  if (operation === "capture") {
+  if (["capture", "capture.attach"].includes(operation)) {
     const bytes = input.bytes || Buffer.from(input.imageBase64 || "", "base64");
     await preparePreview(store, bytes);
   }
@@ -15,6 +15,15 @@ export async function mutate(store, operation, input, idempotencyKey) {
       case "project": return store.project(input);
       case "screen": return store.screen(input);
       case "capture": return store.capture(input);
+      case "capture.attach": {
+        const previous = store.getRun(input.run);
+        const capture = store.capture(input);
+        const ids = previous.captureIds.filter(id => {
+          const item = store.getCapture(id);
+          return item.screen !== capture.screen || item.role !== capture.role || JSON.stringify(item.variant) !== JSON.stringify(capture.variant);
+        });
+        return store.run({ project: previous.project, title: input.title, captureIds: [...ids, capture.id], source: { kind: "upload", previous: previous.id }, warnings: previous.warnings });
+      }
       case "run": return store.run(input);
       case "review-set": return store.saveReviewSet(input);
       case "note": return store.addNote(input);

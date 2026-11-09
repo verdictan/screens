@@ -1,20 +1,21 @@
+import { resourceFlow } from "./workflows";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 const cache = new Map();
 const writes = new Map();
-const empty = Object.freeze({});
+const empty = Object.freeze({ status: "idle", refreshing: false });
 function resource(url) {
   if (!cache.has(url)) cache.set(url, { snapshot: empty, listeners: new Set(), request: null });
   return cache.get(url);
 }
 function publish(record, snapshot) {
-  record.snapshot = snapshot;
+  record.snapshot = { ...snapshot, refreshing: ["loading", "refreshing"].includes(snapshot.status) };
   record.listeners.forEach((listener) => listener());
 }
 async function read(url, signal) {
   const response = await fetch(url, { signal });
   const result = await response.json();
-  if (!response.ok) throw Error(result.error || `HTTP ${response.status}`);
+  if (!response.ok) throw Object.assign(Error(result.error || `HTTP ${response.status}`), { status: response.status });
   return result;
 }
 export function revalidate(url, force = false) {
@@ -23,13 +24,13 @@ export function revalidate(url, force = false) {
   record.controller?.abort();
   const controller = new AbortController();
   record.controller = controller;
-  publish(record, { ...record.snapshot, refreshing: true, error: undefined });
+  publish(record, resourceFlow(record.snapshot, { type: "load" }));
   const request = read(url, controller.signal).then((data) => {
-    if (record.controller === controller) publish(record, { data, refreshing: false });
+    if (record.controller === controller) publish(record, resourceFlow(record.snapshot, { type: "success", data }));
     return data;
   }).catch((error) => {
-    if (record.controller === controller && error.name !== "AbortError")
-      publish(record, { ...record.snapshot, refreshing: false, error: error.message });
+    if (record.controller === controller)
+      publish(record, resourceFlow(record.snapshot, error.name === "AbortError" ? { type: "cancel" } : { type: "failure", error: error.message }));
   }).finally(() => {
     if (record.controller === controller) record.request = null;
   });
@@ -61,7 +62,7 @@ export async function api(url, body, signal) {
     const result = await response.json();
     if (!response.ok) {
       if (response.status < 500) writes.delete(fingerprint);
-      throw Error(result.error || `HTTP ${response.status}`);
+      throw Object.assign(Error(result.error || `HTTP ${response.status}`), { status: response.status });
     }
     writes.delete(fingerprint);
     await refreshResources();

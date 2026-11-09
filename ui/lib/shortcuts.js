@@ -18,3 +18,9 @@ export function matchesShortcut(event, shortcut) {
     && (isMac ? event.metaKey : event.ctrlKey) === parts.includes("mod")
     && !(isMac ? event.ctrlKey : event.metaKey);
 }
+
+export function submitOnShortcut(event) {
+  if (event.defaultPrevented || event.isComposing || event.nativeEvent?.isComposing || event.repeat || event.currentTarget.getAttribute("aria-busy") === "true" || !matchesShortcut(event, "Mod+Enter")) return;
+  event.preventDefault();
+  event.currentTarget.requestSubmit();
+}

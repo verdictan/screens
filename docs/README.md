@@ -12,6 +12,7 @@ Start with [Using Screens](usage.md) to capture, import, and review an app.
 | Collect OCR, browser evidence, and CI reports | [Evidence tools](headless-evidence.md) |
 | Export, back up, restore, or sign evidence | [Storage](storage-tools.md) |
 | Use Docker or deploy over SSH | [Deployment](deployment.md) |
+| Find workflow states and their owners | [Workflow inventory](state-machines.md) |
 | Understand modules and data rules | [Architecture](architecture.md) |
 | Run tests and inspect coverage | [Testing](testing.md) |
 | Run the isolated Docker workflow proof | [Standalone proof](standalone-proof.md) |

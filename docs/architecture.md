@@ -8,7 +8,9 @@ revisions; stale updates return HTTP 409.
 
 | Area | Owner |
 | --- | --- |
+| Shared workflow states and transition rules | `src/workflows.mjs` |
 | Domain rules and persistence | `src/store.mjs` |
+| Capture planning and project review queue | `src/workspace.mjs` |
 | Loopback HTTP and static UI | `src/server.mjs` |
 | MCP transport and registry tools | `src/mcp.mjs` |
 | Manifest adapters | `src/import.mjs` |
@@ -140,9 +142,33 @@ Do not expose the service publicly.
 MCP uses protocol `2025-03-26`, newline-delimited stdio, and stateless Streamable
 HTTP. `GET /mcp` returns 405; SSE is not implemented. Image responses contain
 actual image content. File access, project execution, and storage administration
-remain CLI-only. PR metadata uses GitHub REST.
+remain CLI-only through the generic action catalog. The local human UI can prepare
+a capture plan and explicitly start its persistent job through the workspace
+service. Preparation does not execute project commands. The start operation checks
+the reviewed source and configuration identity. PR metadata uses GitHub REST.
 
 Installation supplies pinned platform Git, browser engines, English OCR, and
 axe-core. Capture and OCR do not download dependencies at runtime. App build
 commands still need the project's toolchain. Hosted authentication and other
 remaining work are in the [Roadmap](roadmap.md).
+
+## Workflow ownership
+
+`src/workflows.mjs` defines shared job, feedback and fixture rules, capture-plan
+phases, and the stateful-area inventory. The registry, workers, review queue, UI and agent
+catalog use these definitions. UI reducers in `ui/lib/workflows.js` own capture
+preparation, recipe editing, resource loading, image loading, area selection and
+annotation gestures. Capture dialogs snapshot their review context on open;
+request ownership prevents late completions from changing a later dialog session.
+Fixture operations run in order. Fixture and service cleanup callers share one
+completion result.
+
+Use `screens workflow-catalog`, MCP `workflow_catalog`, or `GET /api/workflows`
+to read the contract. Job reads include available user actions. Task reads include
+the next agent action and its required arguments; submitted feedback waits for a
+human. Catalog reads do not execute commands or grant decision permissions.
+
+Keep independent dimensions separate. Capture creation, readiness, measurement,
+feedback, target approval and claims cannot substitute for each other. Existing
+status names and SQLite records remain unchanged. See [Workflow inventory](state-machines.md)
+for owners, transitions and decisions.

@@ -1,11 +1,10 @@
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useReducer, useState } from "react";
 import { ArrowUpRight, ScanLine, Scan, Plus, MessageSquare, Images } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Card,
@@ -21,12 +20,13 @@ import { AnnotationLayer } from "./components/AnnotationLayer";
 import { RegionComparison } from "./components/RegionComparison";
 import { CaptureImage } from "./components/CaptureImage";
 import { changeView } from "./lib/motion";
+import { areaFlow, initialArea } from "./lib/workflows";
 import { useUndo } from "./lib/undo";
 export function Comparison({ entry, detail, onPin, perform, loading = false, pin, areaRequest }) {
   const waitForUndo = useUndo();
-  const [selectingArea, setSelectingArea] = useState(false);
-  const [selectedArea, setSelectedArea] = useState(null);
-  const [comparingArea, setComparingArea] = useState(false);
+  const [area, dispatchArea] = useReducer(areaFlow, initialArea);
+  const selectingArea = area.phase === "selecting", comparingArea = area.phase === "comparing";
+  const selectedArea = area.selection;
   const [maskUndoPending, setMaskUndoPending] = useState(false);
   const [pair, setPair] = useState(
     entry.captures.pr
@@ -35,10 +35,11 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
         : "current,pr"
       : "current,target",
   );
-  const [view, setView] = useState("side"),
+  const [view, setView] = useState(() => Object.keys(entry.captures).length > 1 ? "side" : entry.captures.current ? "left" : "right"),
     [blend, setBlend] = useState(50),
     [dimensions, setDimensions] = useState({}),
     [warning, setWarning] = useState("");
+  const [imageErrors, setImageErrors] = useState(new Set());
   const [threshold, setThreshold] = useState(0),
     [masks, setMasks] = useState([]),
     [rectangle, setRectangle] = useState({ x: 0, y: 0, width: 1, height: 1 }),
@@ -53,16 +54,15 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
       const captures = candidate.split(",").map((role) => entry.captures[role]);
       return captures.every(Boolean) && captures.some((capture) => capture.id === areaRequest.capture);
     });
-    if (next) { setPair(next); setComparingArea(true); }
-    else { setComparingArea(false); setWarning("Add a second screenshot to compare this area."); }
-    setSelectedArea(areaRequest);
-    setSelectingArea(false);
+    if (next) { setPair(next); }
+    else { setWarning("Add a second screenshot to compare this area."); }
+    dispatchArea({ type: "requested", selection: areaRequest, comparable: Boolean(next) });
     setView("side");
   }, [areaRequest]);
   const region = comparingArea && [left?.id, right?.id].includes(selectedArea?.capture) ? selectedArea.region : null;
   const areaNotes = detail.notes.filter((note) => note.region && [left?.id, right?.id].includes(note.capture));
   function openAnnotation(value) {
-    if (value.region) setSelectedArea(value);
+    if (value.region) dispatchArea({ type: "selected", selection: value });
     onPin(value);
   }
   const requestKey = JSON.stringify({
@@ -101,7 +101,13 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
       );
     }
   }, [view, left?.id, right?.id, dimensions]);
+  const imageFailed = (id) => setImageErrors((previous) => new Set([...previous, id]));
+  const imageError = [left, right].some((capture) => imageErrors.has(capture?.id)) ? "A capture image could not be loaded." : "";
   const imageLoaded = (c, event) => {
+    setImageErrors((previous) => {
+      if (!previous.has(c.id)) return previous;
+      const next = new Set(previous); next.delete(c.id); return next;
+    });
     const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
     setDimensions((d) =>
       d[c.id]?.width === width && d[c.id]?.height === height
@@ -111,7 +117,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
   };
   const status =
     !left || !right
-      ? "A screenshot is missing from this comparison."
+      ? left || right ? `Only ${labels[left ? roles[0] : roles[1]].toLowerCase()} is available for this pair.` : "No screenshots are available for this pair."
       : left.fixture !== right.fixture
         ? "These screenshots use different sample data."
         : /unknown|unspecified/.test(left.fixture)
@@ -119,7 +125,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
           : left.hash === right.hash
             ? "The original files are identical."
             : view === "overlay"
-              ? "Drag to compare. Use Side by side to comment."
+              ? "Adjust Blend to compare. Use Side by side to comment."
               : "Click to comment, or select an area.";
   function panel(role) {
     const capture = entry.captures[role];
@@ -127,15 +133,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
       <figure key={role} className="capture-panel">
         <figcaption className="capture-header">
           <h3 className="text-sm font-semibold">{labels[role]}</h3>
-          <Badge variant="outline">
-            {!capture ? "Missing" : role === "target"
-              ? entry.targetApproval
-                ? "Approved"
-                : "Proposed"
-              : capture?.createdAt
-                ? new Date(capture.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-                : "No screenshot"}
-          </Badge>
+          {capture && role === "target" && <span className="capture-decision" data-approved={Boolean(entry.targetApproval)}>{entry.targetApproval ? "Approved reference" : "Proposed reference"}</span>}
         </figcaption>
         {!capture ? (
           <div className="capture-missing"><Images aria-hidden="true" /><h3>No {labels[role].toLowerCase()} screenshot</h3><p>Ask your assistant to add this view to the review.</p></div>
@@ -148,9 +146,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
                   capture={capture}
                   alt={`${entry.title} — ${labels[role]}`}
                   onLoad={(e) => imageLoaded(capture, e)}
-                  onError={() =>
-                    setWarning("A capture image could not be loaded.")
-                  }
+                  onError={() => imageFailed(capture.id)}
                   onClick={(event) => {
                     const rect = event.currentTarget.getBoundingClientRect();
                     onPin({
@@ -164,8 +160,8 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
                 />}
                 {!loading && <AnnotationLayer key={`${capture.id}-${view}-${selectingArea}`} capture={capture}
                   notes={detail.notes.filter((note) => note.capture === capture.id && (note.point || note.region))}
-                  pin={selectedArea || pin} selecting={selectingArea && view !== "overlay"} onCancel={() => setSelectingArea(false)}
-                  onOpen={openAnnotation} onSelect={(value) => { setSelectingArea(false); setSelectedArea(value); }} />}
+                  pin={selectedArea || pin} selecting={selectingArea && view !== "overlay"} onCancel={() => dispatchArea({ type: "cancel" })}
+                  onOpen={openAnnotation} onSelect={(value) => dispatchArea({ type: "selected", selection: value })} />}
                 {pin?.capture === capture.id && pin.point && <span className="capture-pin is-draft" aria-hidden="true" style={{ left: `${pin.point.x * 100}%`, top: `${pin.point.y * 100}%` }}>+</span>}
                 {detail.notes
                   .filter((n) => n.capture === capture.id && (n.point || n.region))
@@ -225,38 +221,39 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
     <div id="comparison-area" className="comparison">
       <div className="comparison-toolbar">
         <NativeSelect className="pair-picker" aria-label="Comparison pair" value={pair}
-          onChange={(event) => { const value = event.target.value; changeView(() => { setPair(value); setWarning(""); setSelectedArea(null); setComparingArea(false); setSelectingArea(false); }); }}>
+          onChange={(event) => { const value = event.target.value; changeView(() => { setPair(value); setWarning(""); dispatchArea({ type: "reset" }); }); }}>
           <NativeSelectOption value="current,target">Current &amp; design</NativeSelectOption>
           <NativeSelectOption value="target,pr">Design &amp; update</NativeSelectOption>
           <NativeSelectOption value="current,pr">Current &amp; update</NativeSelectOption>
         </NativeSelect>
+        <Button className="area-select-button" variant={selectingArea ? "secondary" : "ghost"} size="sm" disabled={!left && !right} aria-label={selectingArea ? "Cancel selection" : "Select area"} aria-pressed={selectingArea}
+          onClick={() => { if (view === "overlay") setView("side"); dispatchArea({ type: "select" }); }}><Scan /><span>{selectingArea ? "Cancel selection" : "Select area"}</span></Button>
         <ToggleGroup className="view-controls" type="single" aria-label="Comparison view" value={view === "left" ? "right" : view} onValueChange={(value) => { if (value) changeView(() => setView(value)); }}>
           {[["side", "Side by side"], ["overlay", "Overlay"], ["right", "Single"]].map(([value, label]) => (
             <ToggleGroupItem key={value} value={value}>{label}</ToggleGroupItem>
           ))}
         </ToggleGroup>
       </div>
-      <div className="annotation-tools">
-        <Button variant={selectingArea ? "secondary" : "ghost"} size="sm" aria-pressed={selectingArea}
-          onClick={() => { if (view === "overlay") setView("side"); setComparingArea(false); setSelectingArea(!selectingArea); }}><Scan />{selectingArea ? "Cancel selection" : "Select area"}</Button>
+      {(areaNotes.length > 0 || selectedArea || selectingArea) && <div className="annotation-tools">
+
         {areaNotes.length > 0 && <NativeSelect className="area-note-picker" aria-label="Select an annotated area" value={selectedArea?.noteId || ""}
           onChange={(event) => {
             const note = areaNotes.find((note) => note.id === event.target.value);
-            if (note) { setSelectedArea({ capture: note.capture, region: note.region, noteId: note.id }); setSelectingArea(false); }
+            if (note) { dispatchArea({ type: "selected", selection: { capture: note.capture, region: note.region, noteId: note.id } }); }
           }}>
           <NativeSelectOption value="">Use an area comment</NativeSelectOption>
           {areaNotes.map((note) => <NativeSelectOption key={note.id} value={note.id}>{labels[Object.keys(entry.captures).find((role) => entry.captures[role].id === note.capture)]}: {note.text}</NativeSelectOption>)}
         </NativeSelect>}
         {selectedArea && <>
-          <Button variant="secondary" size="sm" disabled={!left || !right} aria-pressed={comparingArea} onClick={() => { setComparingArea(!comparingArea); setSelectingArea(false); }}>{comparingArea ? "Show full screenshots" : "Compare selected area"}</Button>
+          <Button variant="secondary" size="sm" disabled={!left || !right} aria-pressed={comparingArea} onClick={() => { dispatchArea({ type: "compare" }); }}>{comparingArea ? "Show full screenshots" : "Compare selected area"}</Button>
           <Button variant="ghost" size="sm" onClick={() => onPin({ capture: selectedArea.capture, region: selectedArea.region, point: null })}>Comment on area</Button>
-          <Button variant="ghost" size="sm" onClick={() => { setSelectedArea(null); setComparingArea(false); }}>Clear area</Button>
+          <Button variant="ghost" size="sm" onClick={() => { dispatchArea({ type: "clear" }); }}>Clear area</Button>
         </>}
         <span role="status">{selectingArea ? "Drag to select, or focus the image and press Enter. Esc cancels." : region ? "Comparing the selected area only" : selectedArea ? "Area selected. Compare it or add a comment." : ""}</span>
-      </div>
-      {(view === "left" || view === "right") && <div className="comparison-adjustment"><Field ><FieldLabel htmlFor="single-screenshot">Show screenshot</FieldLabel><NativeSelect id="single-screenshot" aria-label="Single screenshot" value={view} onChange={(event) => { const value = event.target.value; changeView(() => setView(value)); }}><NativeSelectOption value="left">{labels[roles[0]]}</NativeSelectOption><NativeSelectOption value="right">{labels[roles[1]]}</NativeSelectOption></NativeSelect></Field></div>}
+      </div>}
+      {(view === "left" || view === "right") && left && right && <div className="comparison-adjustment"><Field ><FieldLabel htmlFor="single-screenshot">Show screenshot</FieldLabel><NativeSelect id="single-screenshot" aria-label="Single screenshot" value={view} onChange={(event) => { const value = event.target.value; changeView(() => setView(value)); }}><NativeSelectOption value="left">{labels[roles[0]]}</NativeSelectOption><NativeSelectOption value="right">{labels[roles[1]]}</NativeSelectOption></NativeSelect></Field></div>}
       {view === "overlay" && left && right && <div className="blend-control"><span>{labels[roles[0]]}</span><Slider aria-label="Blend" min={0} max={100} step={1} value={[blend]} onValueChange={([value]) => setBlend(value)} /><span>{labels[roles[1]]}</span><output>{blend}%</output></div>}
-      {warning && <Alert className="notice" role="status"><AlertDescription>{warning}</AlertDescription></Alert>}
+      {(warning || imageError) && <Alert className="notice" role="status"><AlertDescription>{warning || imageError}</AlertDescription></Alert>}
       {region && left && right && <section aria-label="Selected area comparison">
         <RegionComparison {...{ left, right, roles, region, dimensions, view, blend }} />
       </section>}
@@ -272,10 +269,10 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
         {view === "overlay" && left && right ? (
           <div className="overlay-images" style={{ "--image-ratio": left.preview ? left.preview.width / left.preview.height : 1.5 }}>
             <CaptureImage key={left.id} capture={left} alt={labels[roles[0]]}
-              onLoad={(e) => imageLoaded(left, e)} onError={() => setWarning("A capture image could not be loaded.")} />
+              onLoad={(e) => imageLoaded(left, e)} onError={() => imageFailed(left.id)} />
             <CaptureImage key={right.id} capture={right} alt={labels[roles[1]]}
               className="overlay-image" style={{ opacity: blend / 100 }}
-              onLoad={(e) => imageLoaded(right, e)} onError={() => setWarning("A capture image could not be loaded.")} />
+              onLoad={(e) => imageLoaded(right, e)} onError={() => imageFailed(right.id)} />
           </div>
         ) : (
           (view === "left" ? [roles[0]] : view === "right" ? [roles[1]] : roles).map(panel)
@@ -300,6 +297,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
             variant="outline"
             size="sm"
             disabled={!left || !right || busy}
+            aria-busy={busy}
             onClick={() =>
               perform(async () => {
                 const key = requestKey;
@@ -458,7 +456,7 @@ export function Comparison({ entry, detail, onPin, perform, loading = false, pin
                   <CollapsibleTrigger className="text-xs text-muted-foreground">
                     Measurement provenance
                   </CollapsibleTrigger><CollapsibleContent>
-                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-[11px]">
+                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-xs">
                     {JSON.stringify(diff, null, 2)}
                   </pre>
                 </CollapsibleContent></Collapsible>

@@ -20,8 +20,30 @@ build settings and unsupported syntax need explicit configuration.
 
 Scanning stays in the selected directory, skips symlinks and common generated,
 dependency, test, fixture, example, and runtime folders, and honors Git ignore
-rules inside a repository. Detection is CLI-only. It cannot enumerate every
+rules inside a repository. Detection cannot enumerate every
 runtime state or establish that a capture command works.
+
+## Capture from the app
+
+Select **Capture screens**, enter the app folder on the computer running Screens,
+and select **Prepare capture plan**. Screens reads the project without running it.
+Review the detected commands and capture limits. Use **Capture settings** to fill
+in missing URLs, environment files, readiness conditions, services or sample data.
+Select **Start capture** to authorize execution. The persistent worker continues
+when the dialog closes. The project overview shows progress, stop, resume and the
+resulting review. Resume requires unchanged inputs; prepare a new job after edits.
+
+Use **Add design reference** on a screen to upload an image or capture a running
+design. Uploaded images keep their original size. Design approval remains a
+separate human decision. Captures from a new job join the selected session while
+older captures and comments remain available.
+
+The project overview gathers the latest capture of each role and device across
+sessions. It lists submitted fixes, open comments, proposed designs and missing
+captures first. Opening a queue item creates an immutable comparison when the
+latest images do not already share a session. Capture problems show grouped
+causes and next actions. A clear review queue does not prove complete discovery
+or passing readiness; capture problems remain separate.
 
 ## Run captures
 

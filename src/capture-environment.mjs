@@ -14,6 +14,16 @@ export function substitute(value, variables) {
   });
 }
 
+export function environmentAt(cwd, extraFiles = []) {
+  const values = {};
+  for (const file of [".env", ".env.development", ".env.local", ".env.development.local", ...extraFiles]) {
+    const path = resolve(cwd, file);
+    if (existsSync(path)) Object.assign(values, parseEnv(readFileSync(path, "utf8")));
+    else if (extraFiles.includes(file)) throw Error(`Environment file not found: ${file}`);
+  }
+  return values;
+}
+
 export async function managedEnvironment(config, detection, applications, context, operations) {
   const children = [], logs = [], report = { environment: [], services: [], setup: [] };
   const variables = { root: context.root, output: context.output, ...Object.fromEntries(Object.entries(process.env).map(([key, value]) => [`env.${key}`, value])) };
@@ -26,22 +36,13 @@ export async function managedEnvironment(config, detection, applications, contex
     variables[`services.${name}.url`] = `http://127.0.0.1:${server.address().port}`;
     await new Promise(done => server.close(done));
   }
-  const envAt = (cwd, extraFiles = []) => {
-    const values = {};
-    for (const file of [".env", ".env.development", ".env.local", ".env.development.local", ...extraFiles]) {
-      const path = resolve(cwd, file);
-      if (existsSync(path)) Object.assign(values, parseEnv(readFileSync(path, "utf8")));
-      else if (extraFiles.includes(file)) throw Error(`Environment file not found: ${file}`);
-    }
-    return values;
-  };
-  const inheritedEnv = { ...envAt(context.root, config.envFiles), ...process.env };
+  const inheritedEnv = { ...environmentAt(context.root, config.envFiles), ...process.env };
   for (const [key, value] of Object.entries(inheritedEnv)) variables[`env.${key}`] = value;
   const rootEnv = { ...inheritedEnv, ...substitute(config.env || {}, variables) };
   for (const [key, value] of Object.entries(rootEnv)) variables[`env.${key}`] = value;
   const prepared = applications.map(app => {
     const cwd = resolve(context.root, app.path || ".");
-    const env = { ...rootEnv, ...envAt(cwd, app.envFiles), ...process.env, ...substitute(config.env || {}, variables), ...substitute(app.env || {}, variables) };
+    const env = { ...rootEnv, ...environmentAt(cwd, app.envFiles), ...process.env, ...substitute(config.env || {}, variables), ...substitute(app.env || {}, variables) };
     const required = new Set([...(config.requiredEnv || []), ...(app.requiredEnv || []), ...detection.assets.environment.filter(item => item.application === (app.path || ".") && item.required).map(item => item.name)]);
     const optional = new Set(app.optionalEnv || []);
     report.environment.push({ application: app.path || ".", required: [...required].filter(name => !optional.has(name)), missing: [...required].filter(name => !optional.has(name) && !String(env[name] ?? "").trim()) });
@@ -54,19 +55,17 @@ export async function managedEnvironment(config, detection, applications, contex
     const env = { ...rootEnv, ...substitute(service.env || {}, variables) };
     report.environment.push({ service: service.name, required: service.requiredEnv || [], missing: (service.requiredEnv || []).filter(name => !String(env[name] ?? "").trim()) });
   }
-  let closed = false;
-  const close = async () => {
-    if (closed) return;
-    closed = true;
+  let cleanup;
+  const close = () => cleanup ||= (async () => {
     for (const { child, record } of [...children].reverse()) {
-      try { await operations.stop(child); record.stopped = true; }
-      catch (error) { record.stopped = false; (report.cleanupErrors ||= []).push(`${record.name}: ${error.message}`); }
+      try { record.phase = "stopping"; await operations.stop(child); record.stopped = true; record.phase = "stopped"; }
+      catch (error) { record.stopped = false; record.phase = "stop-failed"; (report.cleanupErrors ||= []).push(`${record.name}: ${error.message}`); }
     }
     for (const entry of logs) {
       try { writeFileSync(join(context.output, `service-${entry.index}.log`), entry.text, { flag: "wx" }); }
       catch (error) { (report.cleanupErrors ||= []).push(`Service log ${entry.index}: ${error.message}`); }
     }
-  };
+  })();
   const missing = report.environment.filter(item => item.missing.length);
   if (missing.length) { const error = Error(`Missing environment settings: ${missing.map(item => `${item.application || item.service}: ${item.missing.join(", ")}`).join("; ")}`); error.environmentReport = report; throw error; }
   const setupContext = { ...context, env: rootEnv };
@@ -79,7 +78,7 @@ export async function managedEnvironment(config, detection, applications, contex
       if (!entry) throw Error("Service dependencies contain a cycle or unknown name");
       const [name, raw] = entry, service = substitute(raw, variables);
       context.signal?.throwIfAborted();
-      const record = { name, status: "starting", url: variables[`services.${name}.url`] }; report.services.push(record);
+      const record = { name, status: "starting", phase: "starting", url: variables[`services.${name}.url`] }; report.services.push(record);
       const log = { index: logs.length, text: "" }; logs.push(log);
       const serviceContext = { ...setupContext, cwd: resolve(context.root, service.cwd || "."), env: { ...rootEnv, PORT: String(variables[`ports.${name}`]), ...service.env }, log: chunk => { log.text = (log.text + chunk).slice(-8 * 1024 * 1024); } };
       for (const args of service.prepare || []) await operations.command(args, serviceContext);
@@ -99,10 +98,13 @@ export async function managedEnvironment(config, detection, applications, contex
         await new Promise(done => setTimeout(done, 200));
       }
       if (!healthy) throw Error(`Service ${name} did not become ready`);
-      record.status = "ready"; ready.add(name); pending.delete(name);
+      record.status = "ready"; record.phase = "ready"; ready.add(name); pending.delete(name);
     }
     for (const args of setupCommands) { await operations.command(args, setupContext); report.setup.push({ status: "completed" }); }
     return { applications: prepared, variables, env: rootEnv, report, close,
       assertRunning() { for (const { child, record } of children) if (child.failure || child.exitCode !== null || child.signalCode) throw Error(`Managed service ${record.name} exited during capture`); } };
-  } catch (error) { await close(); error.environmentReport = report; throw error; }
+  } catch (error) {
+    for (const record of report.services) if (record.status === "starting") { record.status = "failed"; record.phase = "failed"; }
+    await close(); error.environmentReport = report; throw error;
+  }
 }

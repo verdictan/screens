@@ -1,3 +1,4 @@
+import { workflows, workflowCatalog, feedbackOpen, feedbackTaskWorkflow, canJobTransition, jobActions } from "./workflows.mjs";
 import { Worker } from "node:worker_threads";
 import { automaticInput } from "./automatic-plan.mjs";
 import { captureSummary } from "./capture-summary.mjs";
@@ -50,10 +51,10 @@ function live(claim) { return claim?.owner && Date.parse(claim.expiresAt) > Date
 function taskList(store, input) {
   const allClaims = claims(store);
   const notes = store.db.prepare("SELECT data FROM notes ORDER BY rowid").all().map(parse)
-    .filter((note) => !["verified", "wont-fix"].includes(note.status))
+    .filter((note) => feedbackOpen(note))
     .filter((note) => !input.project || store.getScreen(note.screen).project === input.project)
     .filter((note) => !input.status || note.status === input.status);
-  const tasks = notes.map((note) => ({ ...note, claim: allClaims.get(note.id) || null, available: !live(allClaims.get(note.id)) }));
+  const tasks = notes.map((note) => ({ ...note, workflow: feedbackTaskWorkflow(note), claim: allClaims.get(note.id) || null, available: !live(allClaims.get(note.id)) }));
   return { tasks: tasks.filter((task) => !input.available || task.available).slice(0, input.limit || 100), total: tasks.length };
 }
 function claimTask(store, input, release = false) {
@@ -63,7 +64,7 @@ function claimTask(store, input, release = false) {
     revision(previous, input.expectedRevision);
     const owner = text(input.owner, "owner");
     requireThat(!live(previous) || previous.owner === owner, "Task is claimed by another agent", 409);
-    requireThat(release || !["verified", "wont-fix"].includes(task.status), "Task is already closed", 409);
+    requireThat(release || feedbackOpen(task), "Task is already closed", 409);
     const seconds = input.seconds ?? 900;
     requireThat(Number.isInteger(seconds) && seconds >= 30 && seconds <= 86400, "Lease must be 30–86400 seconds");
     const value = save(store, "task_claims", { id: task.id, owner: release ? null : owner, expiresAt: release ? now() : new Date(Date.now() + seconds * 1000).toISOString(), revision: (previous?.revision ?? 0) + 1, updatedAt: now() });
@@ -82,6 +83,7 @@ function taskHandoff(store, input) {
     captures, evidence: detail.evidence.filter((item) => ids.has(item.capture)), measurements,
     relatedNotes: detail.notes.filter((item) => item.id !== task.id && ids.has(item.capture)),
     sourceLinks: store.db.prepare("SELECT data FROM source_links WHERE capture=?").all(original.id).map(parse),
+    workflow: feedbackTaskWorkflow(task),
     instructions: "Keep original capture anchors. Submit a new implementation capture and resolution. Human review decides acceptance." };
 }
 function listPage(store, input) {
@@ -173,16 +175,16 @@ function enqueuePrepared(store, prepared, input) {
 function leaseJob(store, input) {
   return store.transaction(() => {
     const job = store.db.prepare("SELECT data FROM capture_jobs ORDER BY rowid").all().map(parse).find((job) =>
-      (job.status === "queued" || job.status === "running" && Date.parse(job.leaseUntil) <= Date.now()) &&
+      canJobTransition(job, "lease", { actor: "worker" }) &&
       (!input.id || job.id === input.id) && (job.kind !== "automatic" || existsSync(job.repo)));
     if (!job) return null;
-    Object.assign(job, { worker: text(input.worker, "worker"), token: randomUUID(), status: "running", leaseUntil: new Date(Date.now() + 60000).toISOString(), attempts: job.attempts + 1, revision: job.revision + 1, updatedAt: now() });
+    Object.assign(job, { worker: text(input.worker, "worker"), token: randomUUID(), status: workflows.job.events.lease.to, leaseUntil: new Date(Date.now() + 60000).toISOString(), attempts: job.attempts + 1, revision: job.revision + 1, updatedAt: now() });
     save(store, "capture_jobs", job); jobEvent(store, job.id, "job.started", { worker: job.worker, attempt: job.attempts }); return job;
   });
 }
 function ownedJob(store, input) {
   const job = get(store, "capture_jobs", input.id);
-  requireThat(job.status === "running" && job.token === input.token && Date.parse(job.leaseUntil) > Date.now(), "Job lease expired or changed", 409);
+  requireThat(canJobTransition(job, "heartbeat", { actor: "worker", token: input.token }), "Job lease expired or changed", 409);
   return job;
 }
 function heartbeat(store, input) {
@@ -210,7 +212,7 @@ function finishJob(store, input) {
       const run = store.getRun(input.run);
       requireThat(run.project === job.config.project.id && run.captureIds.every((id) => job.captures.includes(id)), "Run does not belong to this job");
     }
-    job.status = input.error ? "failed" : "completed"; job.error = input.error || null; job.result = input.run || null;
+    job.status = workflows.job.events[input.error ? "fail" : "complete"].to; job.error = input.error || null; job.result = input.run || null;
     job.revision++; job.updatedAt = now(); job.token = null; job.leaseUntil = null;
     save(store, "capture_jobs", job); jobEvent(store, job.id, `job.${job.status}`, { run: job.result, error: job.error }); return job;
   });
@@ -219,7 +221,9 @@ function changeJob(store, input) {
   return store.transaction(() => {
     const job = get(store, "capture_jobs", input.id); revision(job, input.expectedRevision);
     requireThat(!["completed"].includes(job.status), "Completed jobs are immutable");
-    job.status = input.resume ? "queued" : "cancelled"; job.token = null; job.leaseUntil = null; job.error = null;
+    const event = input.resume ? "resume" : "cancel";
+    requireThat(canJobTransition(job, event), "Job already has an active worker", 409);
+    job.status = workflows.job.events[event].to; job.token = null; job.leaseUntil = null; job.error = null;
     job.revision++; job.updatedAt = now(); save(store, "capture_jobs", job); jobEvent(store, job.id, `job.${job.status}`); return job;
   });
 }
@@ -299,7 +303,9 @@ function enqueueAutomatic(store, input) {
   requireThat(input.execute === "yes", "Pass execute=yes to queue automatic capture");
   const prepared = automaticInput(input.path || ".", input);
   const project = { id: input.project || prepared.config.project?.id || prepared.root.split(/[\\/]/).at(-1).replace(/[^a-zA-Z0-9._-]/g, "-"), name: prepared.config.project?.name || prepared.root.split(/[\\/]/).at(-1) };
-  const options = Object.fromEntries(["path", "config", "plan", "project", "profile", "title", "url", "output", "port", "screens"].filter(key => input[key] !== undefined).map(key => [key, input[key]]));
+  const options = Object.fromEntries(["path", "config", "plan", "project", "profile", "title", "url", "output", "port", "screens", "recipe", "role", "review"].filter(key => input[key] !== undefined).map(key => [key, input[key]]));
+  if (input.role !== undefined) choice(input.role, ["current", "target", "pr"], "capture role");
+  if (input.review) requireThat(store.getRun(input.review).project === project.id, "Capture session belongs to another project");
   options.path = prepared.root; options.project = project.id;
   for (const key of ["config", "plan", "output"]) if (options[key]) options[key] = resolve(options[key]);
   return store.transaction(() => {
@@ -328,8 +334,24 @@ export async function executeAutomaticLease(store, job, signal, onEvent) {
   if (signal?.aborted) return result;
   store.transaction(() => {
     const current = ownedJob(store, { id: job.id, token: job.token });
-    current.status = result.exitCode ? "failed" : "completed"; current.error = result.exitCode ? result.error || "Capture coverage or readiness is incomplete" : null;
-    current.result = result.run?.id || null; current.report = { output: result.output, summary: captureSummary(result) };
+    current.status = workflows.job.events[result.exitCode ? "fail" : "complete"].to; current.error = result.exitCode ? result.error || "Capture coverage or readiness is incomplete" : null;
+    const summary = captureSummary(result);
+    let capturedRun = result.run;
+    if (capturedRun && job.auto.options.review) {
+      const previous = store.getRun(job.auto.options.review), slots = new Map();
+      for (const id of [...previous.captureIds, ...capturedRun.captureIds]) {
+        const capture = store.getCapture(id);
+        slots.set(`${capture.screen}|${JSON.stringify(capture.variant)}|${capture.role}`, id);
+      }
+      capturedRun = store.run({ project: capturedRun.project, title: capturedRun.title, captureIds: [...slots.values()], warnings: capturedRun.warnings,
+        source: { ...capturedRun.source, previous: previous.id, captureSession: capturedRun.id } });
+      result.run = capturedRun;
+      if (result.url) {
+        const url = new URL(result.url); url.searchParams.set("run", capturedRun.id); result.url = url.href;
+        summary.reviewUrl = result.url;
+      }
+    }
+    current.result = capturedRun?.id || null; current.report = { output: result.output, summary };
     current.revision++; current.updatedAt = now(); current.token = null; current.leaseUntil = null;
     save(store, "capture_jobs", current); jobEvent(store, job.id, `job.${current.status}`, { run: current.result });
   });
@@ -358,11 +380,11 @@ export async function runAutomaticJob(store, input) {
   if (input.resume) {
     job = get(store, "capture_jobs", input.resume);
     requireThat(job.kind === "automatic", "Resume requires an automatic capture job");
-    for (const key of ["path", "config", "plan", "project", "profile", "url", "screens"]) if (input[key] !== undefined) {
+    for (const key of ["path", "config", "plan", "project", "profile", "url", "screens", "recipe", "role", "review"]) if (input[key] !== undefined) {
       const value = ["path", "config", "plan"].includes(key) ? resolve(input[key]) : input[key];
       requireThat(JSON.stringify(value) === JSON.stringify(job.auto.options[key]), `Resume uses frozen ${key}; create a new job to change it`);
     }
-    requireThat(job.status !== "running" || Date.parse(job.leaseUntil) <= Date.now(), "Job already has an active worker", 409);
+    requireThat(canJobTransition(job, "resume"), "Job cannot resume while completed or owned by an active worker", 409);
     changeJob(store, { id: job.id, expectedRevision: input.expectedRevision === undefined ? job.revision : Number(input.expectedRevision), resume: true });
   } else job = enqueueAutomatic(store, { ...input, execute: "yes" });
   if (input.queue === "yes") return { status: "queued", job: job.id, exitCode: 0 };
@@ -421,8 +443,12 @@ async function worker(store, context) {
       if (!leaseError) {
         try {
           if (context.signal.aborted) {
-            const current = get(store, "capture_jobs", job.id);
-            changeJob(store, { id: job.id, expectedRevision: current.revision, resume: true });
+            store.transaction(() => {
+              const current = ownedJob(store, { id: job.id, token: job.token });
+              current.status = workflows.job.events.interrupt.to; current.token = null; current.leaseUntil = null;
+              current.error = null; current.revision++; current.updatedAt = now();
+              save(store, "capture_jobs", current); jobEvent(store, current.id, "job.queued", { reason: "worker-interrupted" });
+            });
           } else finishJob(store, { id: job.id, token: job.token, error: error.message });
         } catch (stateError) { if (stateError.status !== 409) throw stateError; }
       }
@@ -477,6 +503,7 @@ async function watchEvents(store, input, context) {
 
 const captureInput = { config: string, repo: string, ref: string, role: string, profile: string, screens: { type: "array", items: string }, title: string, execute: string };
 export const automationActions = {
+  "workflow-catalog": action("Read workflow states, transitions, actors, requirements and ownership. Does not execute actions or change human decisions.", {}, [], () => workflowCatalog()),
   doctor: action("Report environment, browser, registry, and port diagnostics without executing captures.", { port: integer }, [], doctor, true),
   "tasks-list": action("List open feedback tasks and active agent leases.", { project: string, status: string, available: boolean, limit: integer }, [], taskList),
   "tasks-claim": action("Claim or renew a feedback task lease using its current claim revision (0 for a new claim).", { id: string, owner: string, expectedRevision: integer, seconds: integer }, ["id", "owner", "expectedRevision"], (store, input) => claimTask(store, input)),
@@ -486,8 +513,8 @@ export const automationActions = {
   "evidence-scoped": action("Retrieve evidence for exact captures, a run, or a review set, optionally scoped to a region.", { capture: string, run: string, reviewSet: string, region: { type: "object" } }, [], scopedEvidence),
   "jobs-enqueue-auto": action("Queue an authorized automatic capture plan with persistent scenario checkpoints.", { path: string, config: string, plan: string, project: string, profile: string, screens: { type: "array", items: string }, title: string, execute: string, output: string }, ["path", "execute"], enqueueAutomatic, true),
   "jobs-enqueue": action("Queue an explicitly authorized capture recipe at a resolved commit.", captureInput, ["repo", "config", "execute"], enqueue, true),
-  "jobs-list": action("List persistent capture jobs.", { status: string }, [], (store, input) => store.db.prepare("SELECT data FROM capture_jobs ORDER BY rowid DESC").all().map(parse).filter((job) => !input.status || job.status === input.status)),
-  "jobs-get": action("Read a capture job and its current revision.", { id: string }, ["id"], (store, input) => get(store, "capture_jobs", input.id)),
+  "jobs-list": action("List persistent capture jobs.", { status: string }, [], (store, input) => store.db.prepare("SELECT data FROM capture_jobs ORDER BY rowid DESC").all().map(parse).filter((job) => !input.status || job.status === input.status).map(job => ({ ...job, availableActions: jobActions(job) }))),
+  "jobs-get": action("Read a capture job and its current revision.", { id: string }, ["id"], (store, input) => { const job = get(store, "capture_jobs", input.id); return { ...job, availableActions: jobActions(job) }; }),
   "jobs-change": action("Cancel a job, or resume a failed/interrupted job from its saved captures.", { id: string, expectedRevision: integer, resume: boolean }, ["id", "expectedRevision"], changeJob),
   "jobs-watch": action("Stream persisted job events as NDJSON until the job stops.", { id: string, after: integer }, ["id"], watchJob, true),
   "jobs-events": action("Read ordered capture job events after a cursor.", { id: string, after: integer, limit: integer }, ["id"], jobEvents),

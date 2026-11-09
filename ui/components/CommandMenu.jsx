@@ -28,11 +28,10 @@ export function collectActions(showPage) {
         const trigger = parent.querySelector(":scope > [data-slot=collapsible-trigger]");
         if (trigger !== element) trigger?.click();
       }
-      requestAnimationFrame(() => {
-        element.focus();
-        element.scrollIntoView({ block: "nearest" });
-        action();
-      });
+      await new Promise(requestAnimationFrame);
+      element.focus();
+      element.scrollIntoView({ block: "nearest" });
+      return action();
     };
     const shortcut = element.dataset.shortcut;
     if (element.tagName === "SELECT") {

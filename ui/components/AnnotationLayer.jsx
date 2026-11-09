@@ -1,19 +1,18 @@
-import { useRef, useState } from "react";
+import { useReducer } from "react";
+import { annotationGesture, initialGesture, selectionRectangle } from "../lib/workflows";
 
 const bounds = (region) => ({ left: `${region.x * 100}%`, top: `${region.y * 100}%`, width: `${region.width * 100}%`, height: `${region.height * 100}%` });
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 
 export function AnnotationLayer({ capture, notes, pin, selecting, onSelect, onOpen, onCancel }) {
-  const drag = useRef(null);
-  const [selection, setSelection] = useState(null);
+  const [gesture, dispatch] = useReducer(annotationGesture, initialGesture);
+  const selection = gesture.region;
   const position = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return { x: clamp((event.clientX - rect.left) / rect.width), y: clamp((event.clientY - rect.top) / rect.height) };
   };
-  const rectangle = (start, end) => ({ x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.abs(end.x - start.x), height: Math.abs(end.y - start.y) });
   const finish = (region) => {
-    drag.current = null;
-    setSelection(null);
+    dispatch({ type: "finish" });
     onSelect({ capture: capture.id, point: null, region });
   };
   return <>
@@ -28,38 +27,34 @@ export function AnnotationLayer({ capture, notes, pin, selecting, onSelect, onOp
         event.preventDefault();
         event.currentTarget.focus({ preventScroll: true });
         event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { start: position(event), pointer: event.pointerId };
-        setSelection(null);
+        dispatch({ type: "pointer-start", point: position(event), pointer: event.pointerId });
       }}
       onPointerMove={(event) => {
-        if (drag.current?.pointer === event.pointerId) setSelection(rectangle(drag.current.start, position(event)));
+        dispatch({ type: "pointer-move", pointer: event.pointerId, point: position(event) });
       }}
       onPointerUp={(event) => {
-        if (drag.current?.pointer !== event.pointerId) return;
-        const region = rectangle(drag.current.start, position(event));
+        if (gesture.phase !== "dragging" || gesture.pointer !== event.pointerId) return;
+        const region = selectionRectangle(gesture.start, position(event));
         const rect = event.currentTarget.getBoundingClientRect();
-        drag.current = null;
+        dispatch({ type: "finish" });
         event.currentTarget.releasePointerCapture(event.pointerId);
         if (region.width * rect.width >= 4 && region.height * rect.height >= 4) finish(region);
-        else setSelection(null);
       }}
-      onPointerCancel={() => { drag.current = null; setSelection(null); }}
-      onLostPointerCapture={() => { drag.current = null; }}
+      onPointerCancel={event => dispatch({ type: "pointer-cancel", pointer: event.pointerId })}
+      onLostPointerCapture={event => dispatch({ type: "pointer-cancel", pointer: event.pointerId })}
       onKeyDown={(event) => {
-        if (event.key === "Escape") { event.preventDefault(); drag.current = null; setSelection(null); onCancel(); return; }
+        if (event.key === "Escape") { event.preventDefault(); dispatch({ type: "cancel" }); onCancel(); return; }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          if (selection) finish(selection);
-          else setSelection({ x: 0.25, y: 0.25, width: 0.5, height: 0.5 });
+          if (gesture.phase === "adjusting") finish(selection);
+          else dispatch({ type: "keyboard-start" });
           return;
         }
-        if (!selection || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+        if (gesture.phase !== "adjusting" || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
         event.preventDefault();
         const dx = event.key === "ArrowLeft" ? -0.01 : event.key === "ArrowRight" ? 0.01 : 0;
         const dy = event.key === "ArrowUp" ? -0.01 : event.key === "ArrowDown" ? 0.01 : 0;
-        setSelection(event.shiftKey
-          ? { ...selection, width: clamp(selection.width + dx, 0.01, 1 - selection.x), height: clamp(selection.height + dy, 0.01, 1 - selection.y) }
-          : { ...selection, x: clamp(selection.x + dx, 0, 1 - selection.width), y: clamp(selection.y + dy, 0, 1 - selection.height) });
+        dispatch({ type: "keyboard-move", dx, dy, resize: event.shiftKey });
       }}>
       {selection && <span className="capture-region is-draft" style={bounds(selection)} aria-hidden="true" />}
     </div>}

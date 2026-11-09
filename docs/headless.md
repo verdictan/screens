@@ -14,6 +14,7 @@ screens headless-help jobs-enqueue
 screens doctor --port 4800
 screens storage-report
 screens tasks-list --project PROJECT_ID
+screens workflow-catalog
 ```
 
 `headless-help` prints each action's input schema and whether it is CLI-only.
@@ -141,7 +142,8 @@ backup. Scheduled work runs while `screens serve` is running.
 ## Agent tasks and queries
 
 ```sh
-screens tasks-list --project PROJECT_ID --available true
+screens tasks-list --project PROJECT_ID
+screens workflow-catalog --available true
 screens tasks-claim --id NOTE_ID --owner agent-a --expected-revision 0 --seconds 900
 screens tasks-handoff --id NOTE_ID
 screens tasks-release --id NOTE_ID --owner agent-a --expected-revision CLAIM_REVISION

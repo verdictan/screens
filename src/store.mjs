@@ -1,3 +1,4 @@
+import { workflows, feedbackOpen } from "./workflows.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -408,7 +409,7 @@ export class Store {
       entry.openNotes = screenDetail.notes.filter(
         (note) =>
           variantIds.has(note.capture) &&
-          !["verified", "wont-fix"].includes(note.status),
+          feedbackOpen(note),
       ).length;
       entry.targetApproval = target
         ? (this.db
@@ -616,11 +617,12 @@ export class Store {
       );
       const status = choice(
         input.status,
-        ["open", "in-progress", "submitted", "verified", "wont-fix"],
+        Object.keys(workflows.feedback.states),
         "status",
       );
+      const transition = Object.values(workflows.feedback.events).find(event => event.to === status);
       requireThat(
-        human || !["verified", "wont-fix"].includes(status),
+        transition.actors.includes(human ? "human" : "agent"),
         "This decision requires the review interface",
         403,
       );

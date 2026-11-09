@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUp, ArrowDown, Plus, X } from "lucide-react";
+import { ArrowUp, ArrowDown, Plus, Pencil, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Field, FieldLabel, FieldSet } from "./ui/field";
@@ -13,9 +13,11 @@ export function ReviewSets({ run, sets, active, onSelect }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const entries = new Map(run.entries.map((entry) => [entryKey(entry), entry]));
+  const variantLabel = ({ variant }) => [variant.device, variant.viewport, variant.theme, variant.locale, variant.browser,
+    variant.textScale !== "default" ? `Text ${variant.textScale}` : null].filter(Boolean).join(" · ");
   const label = (key) => {
     const entry = entries.get(key);
-    return `${entry.title} · ${entry.variant.device} · ${entry.variant.theme} · ${entry.variant.viewport} · ${entry.variant.locale} · ${entry.variant.textScale}`;
+    return `${entry.title} · ${variantLabel(entry)}`;
   };
   function edit(value) {
     setError("");
@@ -29,21 +31,21 @@ export function ReviewSets({ run, sets, active, onSelect }) {
     });
   }
   return <div className="review-set-picker">
-    <Field><FieldLabel htmlFor="review-set">Review set</FieldLabel>
+    <Field><FieldLabel className="sr-only" htmlFor="review-set">Review set</FieldLabel>
       <NativeSelect id="review-set" value={active?.id || ""} onChange={(event) => onSelect(event.target.value)}>
         <NativeSelectOption value="">All screens</NativeSelectOption>
         {sets.map((set) => <NativeSelectOption key={set.id} value={set.id}>{set.title} ({set.entries.length})</NativeSelectOption>)}
       </NativeSelect>
     </Field>
     <div className="review-set-actions">
-      <Button variant="ghost" size="sm" onClick={() => edit(null)}><Plus />New set</Button>
-      {active && <Button variant="ghost" size="sm" onClick={() => edit(active)}>Edit set</Button>}
+      <Button variant="ghost" size="icon" aria-label="New set" title="New set" onClick={() => edit(null)}><Plus /></Button>
+      {active && <Button variant="ghost" size="icon" aria-label="Edit set" title="Edit set" onClick={() => edit(active)}><Pencil /></Button>}
     </div>
     <Dialog open={Boolean(draft)} onOpenChange={(open) => { if (!open && !busy) setDraft(null); }}>
-      <DialogContent className="review-set-dialog">
+      <DialogContent className="review-set-dialog" closeDisabled={busy}>
         <DialogTitle>{draft?.id ? "Edit review set" : "New review set"}</DialogTitle>
         <DialogDescription>Choose screens from this run and put them in review order.</DialogDescription>
-        {draft && <form onSubmit={async (event) => {
+        {draft && <form aria-busy={busy} onSubmit={async (event) => {
           event.preventDefault(); setBusy(true); setError("");
           try {
             const saved = await api("/api/review-sets", { id: draft.id, run: run.id, title: draft.title, entries: draft.entries, expectedRevision: draft.revision });
@@ -61,7 +63,7 @@ export function ReviewSets({ run, sets, active, onSelect }) {
             </Field>
             <ol className="review-set-order" aria-label="Review order">
               {draft.entries.map((key, index) => <li key={key}>
-                <span>{label(key)}</span>
+                <span title={label(key)}><strong>{entries.get(key).title}</strong><small>{variantLabel(entries.get(key))}</small></span>
                 <Button type="button" variant="ghost" size="icon" aria-label={`Move ${label(key)} earlier`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp /></Button>
                 <Button type="button" variant="ghost" size="icon" aria-label={`Move ${label(key)} later`} disabled={index === draft.entries.length - 1} onClick={() => move(index, 1)}><ArrowDown /></Button>
                 <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${label(key)} from set`} onClick={() => setDraft({ ...draft, entries: draft.entries.filter((item) => item !== key) })}><X /></Button>

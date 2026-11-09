@@ -146,3 +146,15 @@ SCREENS_HOME=.screens/dev SCREENS_DEV_PORT=5174 SCREENS_API_PORT=4802 npm run de
 
 Keep the UI and API ports distinct. For a production source build, use `npm start`.
 See [Testing](testing.md) for test commands and [Roadmap](roadmap.md) for remaining work.
+
+## Project overview
+
+Select **Project overview** in the library to find submitted fixes, open comments,
+proposed designs and missing screenshots across capture sessions. Select a row to
+open its latest images. Use **Next screen needing review** to continue the queue.
+
+Select **Capture screens** to prepare and explicitly start a local capture job.
+The overview shows capture progress and grouped problems with next steps. Use
+**Add design reference** to upload an image for the selected screen and device.
+Use **Copy fix request** on a comment to send its exact capture, annotation and
+revision to your assistant. See [Automatic capture](automatic-capture.md).

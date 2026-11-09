@@ -1,3 +1,4 @@
+import { workflowCatalog } from "./workflows.mjs";
 import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -5,6 +6,7 @@ import { protocol } from "./mcp.mjs";
 import { Fault, requireThat } from "./validation.mjs";
 import { actionCatalog, runHeadless } from "./headless.mjs";
 import { mutate } from "./operations.mjs";
+import { captureWorkspace, projectWorkspace, openWorkspace, captureProblems } from "./workspace.mjs";
 import { prepareCaptures } from "./previews.mjs";
 
 async function body(req) {
@@ -24,6 +26,7 @@ async function body(req) {
 const uiRoot = fileURLToPath(new URL('../dist/ui/', import.meta.url));
 export function requestHandler(store, getPort) {
   const rpc = protocol(store);
+  const workspace = captureWorkspace(store);
   return async (req, res) => {
     const send = (status, data, type = "application/json") => {
       res.writeHead(status, { "content-type": type });
@@ -103,7 +106,9 @@ export function requestHandler(store, getPort) {
           ] }, eagerness: "moderate" }] }, "application/speculationrules+json");
         if (path === "/api/health")
           return send(200, { ok: true, version: "0.3.0" });
+        if (path === "/api/workflows") return send(200, workflowCatalog());
         if (path === "/api/automation") return send(200, actionCatalog());
+        if (path === "/api/workspace") return send(200, projectWorkspace(store, url.searchParams.get("project")));
         if (path === "/api/projects") return send(200, store.projects());
         if (path === "/api/screens")
           return send(
@@ -124,7 +129,8 @@ export function requestHandler(store, getPort) {
         if (path === "/api/compare") {
           const id = url.searchParams.get("run");
           await prepareCaptures(store, store.getRun(id).captureIds.map((capture) => store.getCapture(capture)));
-          return send(200, store.compare(id));
+          const comparison = store.compare(id);
+          return send(200, { ...comparison, problems: captureProblems(comparison) });
         }
         if (path === "/api/evidence")
           return send(
@@ -165,6 +171,10 @@ export function requestHandler(store, getPort) {
           415,
         );
         const input = await body(req);
+        if (path === "/api/workspace/upload") return send(201, await mutate(store, "capture.attach", input, req.headers["idempotency-key"]));
+        if (path === "/api/workspace/prepare") return send(200, workspace.prepare(input));
+        if (path === "/api/workspace/capture") return send(201, workspace.start(input, req.headers["idempotency-key"]));
+        if (path === "/api/workspace/open") return send(200, store.once(req.headers["idempotency-key"], "workspace.open", input, () => openWorkspace(store, input)));
         const action = path.match(/^\/api\/automation\/([a-z0-9_-]+)$/);
         if (action) return send(200, await runHeadless(store, action[1], input));
         const operations = {
