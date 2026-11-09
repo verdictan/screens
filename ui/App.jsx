@@ -1,9 +1,10 @@
+import { initialNavigation, workspaceNavigation } from "./lib/workflows";
 import { jobPending } from "../src/workflows.mjs";
 import { toast } from "sonner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { Layers, Search, Check, Images, Camera, PanelLeftClose, PanelLeftOpen, RefreshCw } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
@@ -23,7 +24,10 @@ import { matchesShortcut, shortcutLabel, typing } from "./lib/shortcuts";
 export function App() {
   const shell = useRef(null);
   const libraryList = useRef(null);
-  const [tab, setTab] = useState("compare");
+  const [navigation, dispatchNavigation] = useReducer(workspaceNavigation, location, initialNavigation);
+  const { projectId, runId, setId, selected, overview, tab } = navigation;
+  const navigationIntent = useRef(0);
+  useLayoutEffect(() => () => { navigationIntent.current++; }, []);
   const [focused, setFocused] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commands, setCommands] = useState([]);
@@ -34,19 +38,7 @@ export function App() {
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
-  const params = new URLSearchParams(location.search);
-  const [overview, setOverview] = useState(params.get("view") === "overview" || (!params.get("run") && !location.hash));
   const [captureOpen, setCaptureOpen] = useState(false), [captureRole, setCaptureRole] = useState("current");
-  const [projectId, setProjectId] = useState(params.get("project") || "");
-  const [runId, setRunId] = useState(params.get("run") || "");
-  const [setId, setSetId] = useState(params.get("set") || "");
-  const [selected, setSelected] = useState(() => {
-    try {
-      return decodeURIComponent(location.hash.slice(1));
-    } catch {
-      return "";
-    }
-  });
   const [collapsed, setCollapsed] = useState(false);
   const [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all"),
@@ -64,14 +56,30 @@ export function App() {
     const timer = setInterval(() => { void refreshResources(); }, 2500);
     return () => clearInterval(timer);
   }, [workspace.data]);
-  const openCapture = (role = "current") => { setCaptureRole(role); setCaptureOpen(true); };
-  const openSession = id => { setQuery(""); setFilter("all"); setFocused(false); setRunId(id); setSetId(""); setSelected(""); setOverview(false); setTab("compare"); };
+  function navigate(event, animated = false) {
+    const intent = ++navigationIntent.current;
+    const apply = () => { if (navigationIntent.current === intent) dispatchNavigation(event); };
+    return animated ? changeView(apply) : apply();
+  }
+  function resetLibrary() { setQuery(""); setFilter("all"); setFocused(false); setMenu(false); }
+  function chooseProject(id) { resetLibrary(); return navigate({ type: "project", id }, true); }
+  function openSession(id) { resetLibrary(); return navigate({ type: "session", id }, true); }
+  const openCapture = (role = "current") => { navigationIntent.current++; setCaptureRole(role); setCaptureOpen(true); };
+  async function resolveNavigation(resolve) {
+    let intent = ++navigationIntent.current;
+    try {
+      const target = await resolve();
+      if (navigationIntent.current !== intent) return;
+      setMessage(""); resetLibrary();
+      intent = navigationIntent.current + 1;
+      await navigate(target, true);
+    } catch (error) { if (navigationIntent.current === intent) setMessage(error.message); }
+  }
   const openQueue = row => {
     if (row.status === "missing" || !row.captureIds.length) { openCapture(); return; }
-    return perform(async () => {
-    const session = row.run ? { id: row.run } : await api("/api/workspace/open", { project: project.id });
-    openSession(session.id); setSelected(entryKey(row));
-    if (["submitted", "feedback"].includes(row.status)) setTab("feedback");
+    return resolveNavigation(async () => {
+      const session = row.run ? { id: row.run } : await api("/api/workspace/open", { project: project.id });
+      return { type: "screen", projectId: project.id, runId: session.id, selected: entryKey(row), tab: ["submitted", "feedback"].includes(row.status) ? "feedback" : "compare" };
     });
   };
   const runs = useResource(
@@ -87,7 +95,7 @@ export function App() {
   const setEntries = activeSet
     ? activeSet.entries.map((key) => run?.entries.find((entry) => entryKey(entry) === key)).filter(Boolean)
     : run?.entries || [];
-  const chooseSet = (id) => { setOverview(false); setSetId(id); setSelected(""); setQuery(""); setFilter("all"); };
+  const chooseSet = (id) => { setQuery(""); setFilter("all"); return navigate({ type: "set", id }); };
   const entry =
     setEntries.find((e) => entryKey(e) === selected) || setEntries[0];
   const detail = useResource(
@@ -135,21 +143,25 @@ export function App() {
             (run.source?.number && !e.captures.pr)),
     );
   const select = (e) => {
-    changeView(() => { setSelected(entryKey(e)); setTab("compare"); setOverview(false); });
+    navigate({ type: "screen", selected: entryKey(e) }, true);
     setMenu(false);
   };
   const index = list.findIndex(
     (e) => entry && entryKey(e) === entryKey(entry),
   );
   async function showPage(value) {
-    await changeView(() => { setTab(value); setFocused(false); setOverview(false); });
+    setFocused(false);
+    const intent = navigationIntent.current + 1;
+    await navigate({ type: "page", page: value }, true);
+    if (navigationIntent.current !== intent) return false;
     if (matchMedia("(max-width: 1100px)").matches) {
       document.getElementById("review-panel")?.scrollIntoView({ block: "start" });
     }
+    return true;
   }
   function openCommands() {
     const navigation = [
-      { id: "overview", label: "Project overview", group: "Workspace", run: () => { setOverview(true); setMenu(false); } },
+      { id: "overview", label: "Project overview", group: "Workspace", run: () => { navigate({ type: "overview" }); setMenu(false); } },
       { id: "capture", label: "Capture screens", group: "Workspace", run: () => openCapture() },
       ...(run && entry ? ["compare", "feedback", "evidence", "history"] : []).map((page, i) => ({
         id: `page-${page}`, label: page === "compare" ? "Review overview" : page[0].toUpperCase() + page.slice(1), group: "Review",
@@ -159,12 +171,12 @@ export function App() {
       { id: "focus", label: focused ? "Show review panel" : "Focus on screenshots", group: "Workspace", run: () => changeView(() => setFocused(!focused)) },
       { id: "refresh", label: "Refresh workspace", group: "Workspace", run: refresh },
       { id: "search", label: "Find a screen", group: "Workspace", shortcut: "/", run: () => { setCollapsed(false); setMenu(true); requestAnimationFrame(() => document.getElementById("search")?.focus()); } },
-      ...(projects.data || []).map((project) => ({ id: `project-${project.id}`, label: project.name, group: "Projects", run: () => changeView(() => { setOverview(true); setProjectId(project.id); setRunId(""); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }) })),
+      ...(projects.data || []).map((project) => ({ id: `project-${project.id}`, label: project.name, group: "Projects", run: () => chooseProject(project.id) })),
       ...(reviewSets.data || []).map((set) => ({ id: `set-${set.id}`, label: set.title, group: "Review sets", run: () => chooseSet(set.id) })),
-      ...(runs.data || []).map((run) => ({ id: `run-${run.id}`, label: run.title, group: "Capture sessions", run: () => changeView(() => { setOverview(false); setRunId(run.id); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }) })),
+      ...(runs.data || []).map((run) => ({ id: `run-${run.id}`, label: run.title, group: "Capture sessions", run: () => openSession(run.id) })),
       ...(allScreens.data || []).map((screen) => ({
         id: `screen-${screen.id}`, label: screen.title, group: `Screens · ${screen.project}`,
-        run: () => perform(async () => {
+        run: () => resolveNavigation(async () => {
           const [runs, detail] = await Promise.all([
             api(`/api/runs?project=${encodeURIComponent(screen.project)}`),
             api(`/api/screen?id=${encodeURIComponent(screen.id)}`),
@@ -172,7 +184,7 @@ export function App() {
           const run = runs.find((r) => detail.captures.some((c) => r.captureIds.includes(c.id)));
           if (!run) throw Error("This screen has no captures in a capture session yet.");
           const capture = detail.captures.find((c) => run.captureIds.includes(c.id));
-          changeView(() => { setOverview(false); setProjectId(screen.project); setOverview(false); setRunId(run.id); setSetId(""); setSelected(entryKey(capture)); setQuery(""); setFilter("all"); setTab("compare"); });
+          return { type: "screen", projectId: screen.project, runId: run.id, selected: entryKey(capture) };
         }),
       })),
     ];
@@ -213,10 +225,10 @@ export function App() {
   const approvedCount = (run?.entries || []).filter((screen) => screen.targetApproval).length;
   const library = (
         <aside className={cn("screen-library", menu && "library-open")} inert={mobile ? !menu : collapsed} aria-label="Screen library">
-          <Button className="overview-link" variant={overview ? "secondary" : "ghost"} onClick={() => { setOverview(true); setMenu(false); }}>Project overview</Button>
+          <Button className="overview-link" variant={overview ? "secondary" : "ghost"} onClick={() => { navigate({ type: "overview" }); setMenu(false); }}>Project overview</Button>
           <div className="library-heading"><h2>Library</h2><span id="count">{!run && loading ? "…" : setEntries.length}</span></div>
           {chosenRun && <div className="run-selection"><NativeSelect className="run-picker" aria-label="Capture session" value={chosenRun.id}
-            onChange={(event) => { const id = event.target.value; changeView(() => { setOverview(false); setRunId(id); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
+            onChange={(event) => openSession(event.target.value)}>
             {runs.data?.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.title}</NativeSelectOption>)}
           </NativeSelect></div>}
           {run && <ReviewSets key={run.id} run={run} sets={reviewSets.data || []} active={activeSet} onSelect={chooseSet} />}
@@ -266,7 +278,7 @@ export function App() {
           </Button>
           <a href="/" data-review-link className="wordmark"><Layers aria-hidden="true" /><span>Screens</span></a>
           {projects.data?.length > 0 && <NativeSelect className="project-picker" aria-label="Project" value={project.id}
-            onChange={(event) => { const id = event.target.value; changeView(() => { setOverview(true); setProjectId(id); setRunId(""); setSetId(""); setSelected(""); setQuery(""); setFilter("all"); setTab("compare"); }); }}>
+            onChange={(event) => chooseProject(event.target.value)}>
             {projects.data.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.name}</NativeSelectOption>)}
           </NativeSelect>}
         </div>
@@ -313,7 +325,7 @@ export function App() {
         </main>
       </div>
       <CaptureWorkspace open={captureOpen} onOpenChange={setCaptureOpen} project={project} folder={workspace.data?.folder} role={captureRole} run={chosenRun} entry={entry}
-        onSession={openSession} onStarted={id => { setProjectId(id); setOverview(true); void refreshResources(); }} />
+        onSession={openSession} onStarted={id => { chooseProject(id); void refreshResources(); }} />
       <CommandMenu open={commandOpen} commands={commands} mobile={mobile} onClose={() => setCommandOpen(false)} />
     </div>
   );

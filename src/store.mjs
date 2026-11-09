@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   Fault,
   requireThat,
+  revisionRecovery,
   text,
   key,
   choice,
@@ -341,7 +342,7 @@ export class Store {
         ? parse(this.db.prepare("SELECT data FROM review_sets WHERE id=?").get(input.id))
         : null;
       requireThat(!input.id || previous?.run === run.id, "Review set not found", 404);
-      requireThat(input.expectedRevision === (previous?.revision ?? 0), "Review set changed. Reload before saving.", 409);
+      requireThat(input.expectedRevision === (previous?.revision ?? 0), "Review set changed. Reload before saving.", 409, revisionRecovery("review-set", input.id, { tool: "review_sets_list", arguments: { run: run.id } }));
       const available = new Set(this.compare(run.id).entries.map((entry) => `${entry.screen}|${JSON.stringify(entry.variant)}`));
       requireThat(Array.isArray(input.entries) && input.entries.length > 0 && input.entries.every((entry) => available.has(entry)), "Select screens from this run");
       const value = {
@@ -614,6 +615,7 @@ export class Store {
           input.expectedRevision === note.revision,
         "Feedback changed. Reload before updating.",
         409,
+        revisionRecovery("feedback", note.id, { tool: "tasks_handoff", arguments: { id: note.id } }),
       );
       const status = choice(
         input.status,
@@ -672,6 +674,7 @@ export class Store {
         input.expectedRevision === (previous?.revision ?? 0),
         "Target approval changed. Reload before updating.",
         409,
+        revisionRecovery("target-approval", c.screen, { tool: "screens_get", arguments: { id: c.screen } }),
       );
       const revision = (previous?.revision ?? 0) + 1;
       this.db

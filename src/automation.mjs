@@ -8,7 +8,7 @@ import { join, resolve, dirname } from "node:path";
 import { tmpdir, platform, arch } from "node:os";
 import { createConnection } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
-import { requireThat, text, choice } from "./validation.mjs";
+import { requireThat, revisionRecovery, text, choice } from "./validation.mjs";
 import { bundledGit, captureBrowser } from "./runtime.mjs";
 import { captureConfig } from "./capture-recipe.mjs";
 import { captureRevision, resolveRevision } from "./capture.mjs";
@@ -34,7 +34,7 @@ function get(store, table, id) {
   return value;
 }
 function revision(previous, expected) {
-  requireThat(expected === (previous?.revision ?? 0), "Record changed. Read its latest revision before updating.", 409);
+  requireThat(expected === (previous?.revision ?? 0), "Record changed. Read its latest revision before updating.", 409, revisionRecovery("automation-record", previous?.id));
 }
 function save(store, table, value) {
   store.db.prepare(`INSERT INTO ${table} VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,data=excluded.data`)

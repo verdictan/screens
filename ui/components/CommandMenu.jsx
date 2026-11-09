@@ -19,7 +19,8 @@ export function collectActions(showPage) {
       || element.closest(".history-entry")?.querySelector("h3")?.textContent;
     const group = { compare: "Comparison", feedback: "Feedback", evidence: "Evidence", history: "History" }[page] || "Workspace";
     const run = async (action) => {
-      if (page) await showPage(page);
+      if (page && await showPage(page) === false) return;
+      if (!element.isConnected) return;
       const parents = [];
       for (let parent = element.parentElement; parent; parent = parent.parentElement) {
         if (parent.dataset.slot === "collapsible" && parent.dataset.state === "closed") parents.unshift(parent);
@@ -29,6 +30,7 @@ export function collectActions(showPage) {
         if (trigger !== element) trigger?.click();
       }
       await new Promise(requestAnimationFrame);
+      if (!element.isConnected || element.matches(":disabled") || element.closest("[hidden], [inert]") || !element.checkVisibility()) return;
       element.focus();
       element.scrollIntoView({ block: "nearest" });
       return action();
@@ -37,6 +39,7 @@ export function collectActions(showPage) {
     if (element.tagName === "SELECT") {
       for (const option of element.options) {
         if (!option.disabled) commands.push({ id: `select-${index}-${option.value}`, label: `${name}: ${option.text}`, group, run: () => run(() => {
+          if (![...element.options].some(current => current.value === option.value && !current.disabled)) return;
           element.value = option.value;
           element.dispatchEvent(new Event("change", { bubbles: true }));
         }) });

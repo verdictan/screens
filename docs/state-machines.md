@@ -67,9 +67,9 @@ service-layer checks still decide each write.
 | pixel-measurement | `ui/Comparison.jsx` (local) | Idle, measuring, measured or failed; results belong to the exact pair, masks, threshold and region. |
 | feedback-write | `ui/ReviewPanels.jsx` (local) | Compose, submit or fail; reopening waits for Undo and rolls back on failure. |
 | evidence-form | `ui/ReviewPanels.jsx` (local) | Closed, editing or saving; kind, method and outcome determine required artifact fields. |
-| review-set-form | `ui/components/ReviewSets.jsx` (local) | Closed, new or editing, saving, failed and saved; server revision owns conflicts. |
-| navigation | `ui/App.jsx` (local) | Project, session, set, screen and tab selection; library, focus and command visibility are orthogonal. |
-| command-dispatch | `ui/components/CommandMenu.jsx` (local) | Open, selected, closing, focus restored, then asynchronous action dispatched. |
+| review-set-form | `ui/components/ReviewSets.jsx` (shared) | Closed, editing, saving, conflict or loading latest; the user chooses the saved version or retained draft before retrying. |
+| navigation | `ui/App.jsx` (reducer) | Project, session, set, screen and tab transition together; stale asynchronous navigation cannot replace a newer intent. Library and focus remain orthogonal. |
+| command-dispatch | `ui/components/CommandMenu.jsx` (local) | Open, selected, closing, focus restored, then dispatch; cancelled navigation or a detached, hidden or disabled control cancels the action. |
 | undo | `ui/lib/undo.jsx` (local) | Waiting, undone or committed; unmount cancels pending actions. |
 | motion | `ui/lib/motion.js` (local) | Held, moving, interrupted or resting; reduced motion is a rendering preference. |
 | standard-controls | `ui/components/ui/` (library) | Radix and Vaul own dialog, drawer, tab, toggle and focus transitions. |
@@ -78,8 +78,39 @@ service-layer checks still decide each write.
 | ci-policy | `src/evidence-tools.mjs` (derived) | Passed, failed, pending or incomplete; explicit policy skips are separate from missing required observations and human acceptance. |
 | evidence-outcome | `src/evidence-tools.mjs` (immutable) | Reported pass, fail or not run; CI completion and human acceptance are separate. |
 | storage-operation | `src/storage-tools.mjs` (transactional) | Prepare assets, write immutable records, commit or roll back; retention follows reachability. |
+| revision-conflict | `src/validation.mjs` (shared) | A stale write fails with 409; recovery identifies the record and requires reading and reconciling current state before retry. |
 | pagination | `src/automation.mjs` (local) | Start, advance and exhaust a query-bound snapshot cursor. |
 | server-lifecycle | `src/cli.mjs` (local) | Listen, run workers, receive shutdown, abort workers and close the registry. |
+
+## Navigation and edit conflicts
+
+Workspace navigation is one composite state: project, session, review set, screen,
+view and tab. Changing a parent resets its dependent selections in one reducer
+transition. Library visibility, search filters and focus stay independent. The
+newest navigation intent owns pending lookups and view transitions. An older
+lookup can complete its server operation, but cannot switch the UI after another
+selection, opening a capture dialog or unmounting the workspace. Command dispatch
+waits for successful navigation and re-checks the live control after the next
+frame. Detached, hidden or disabled controls and removed select options cannot
+execute a delayed command.
+
+The review-set editor has closed, editing, saving, conflict and loading-latest
+phases. A 409 keeps the draft and blocks another save with the same stale revision.
+Load the saved version to compare it with the draft, then explicitly choose:
+
+- **Use saved version** replaces the draft with the latest saved content.
+- **Keep my draft for the next save** keeps local content and adopts the loaded
+  revision for a subsequent, explicit save. It does not write immediately.
+
+Any newer concurrent write can still reject that next save. Closing or unmounting
+an editor invalidates its pending callbacks. A result from an earlier editor
+cannot close a later one or change its selected review set.
+
+Revision-conflict errors preserve HTTP 409 and add a code and recovery object.
+For feedback, review sets and target approvals, recovery names the corresponding
+read tool and arguments. Automation conflicts identify the record. Read current
+state and reconcile before retrying with its expected revision. The API and MCP
+still enforce the existing actor and evidence rules.
 
 ## UI changes
 
@@ -102,6 +133,8 @@ service-layer checks still decide each write.
 - Annotation gestures distinguish pointer dragging from keyboard adjustment.
   Losing pointer capture clears the unfinished drag. Pointer events cannot move
   a keyboard selection, and keyboard events cannot confirm an unfinished drag.
+- Navigation and review-set editing use reducers rather than repeated groups of
+  setters or unrelated busy, draft and error flags.
 - Job buttons use the service's available actions. Labels, pending state and
   feedback closure rules come from the shared contract.
 

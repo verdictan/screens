@@ -85,3 +85,42 @@ export function annotationGesture(state, event) {
     default: return state;
   }
 }
+
+export function initialNavigation({ search, hash }) {
+  const params = new URLSearchParams(search);
+  let selected = "";
+  try { selected = decodeURIComponent(hash.slice(1)); } catch {}
+  return { projectId: params.get("project") || "", runId: params.get("run") || "", setId: params.get("set") || "", selected,
+    overview: params.get("view") === "overview" || (!params.get("run") && !hash), tab: "compare" };
+}
+export function workspaceNavigation(state, event) {
+  switch (event.type) {
+    case "project": return { projectId: event.id, runId: "", setId: "", selected: "", overview: true, tab: "compare" };
+    case "session": return { ...state, runId: event.id, setId: "", selected: "", overview: false, tab: "compare" };
+    case "screen": return { ...state, ...(event.projectId !== undefined ? { projectId: event.projectId } : {}),
+      ...(event.runId !== undefined ? { runId: event.runId, setId: "" } : {}), selected: event.selected, overview: false, tab: event.tab || "compare" };
+    case "set": return { ...state, setId: event.id, selected: "", overview: false };
+    case "page": return { ...state, tab: event.page, overview: false };
+    case "overview": return { ...state, overview: true };
+    default: return state;
+  }
+}
+
+export const initialReviewSet = { phase: "closed", draft: null, latest: null, error: "" };
+export function reviewSetEditor(state, event) {
+  const rule = workflows.reviewSet.events[event.type];
+  if (rule && !rule.from.includes(state.phase)) return state;
+  switch (event.type) {
+    case "open": return { phase: "editing", draft: event.value ? { ...event.value, entries: [...event.value.entries] } : { title: "", entries: [], revision: 0 }, latest: null, error: "" };
+    case "close": return initialReviewSet;
+    case "change": return ["editing", "conflict"].includes(state.phase) ? { ...state, draft: { ...state.draft, ...event.patch } } : state;
+    case "save": return state.phase === "editing" ? { ...state, phase: "saving", error: "" } : state;
+    case "saved": return state.phase === "saving" ? initialReviewSet : state;
+    case "failure": return { ...state, phase: event.error.status === 409 ? "conflict" : state.phase === "loading-latest" ? "conflict" : "editing", error: event.error.message };
+    case "load-latest": return state.phase === "conflict" ? { ...state, phase: "loading-latest", error: "" } : state;
+    case "latest": return state.phase === "loading-latest" ? { ...state, phase: "conflict", latest: event.value } : state;
+    case "use-saved": return state.latest ? { phase: "editing", draft: { ...state.latest, entries: [...state.latest.entries] }, latest: null, error: "" } : state;
+    case "keep-draft": return state.latest ? { ...state, phase: "editing", draft: { ...state.draft, revision: state.latest.revision }, latest: null, error: "" } : state;
+    default: return state;
+  }
+}

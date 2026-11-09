@@ -15,7 +15,7 @@ function publish(record, snapshot) {
 async function read(url, signal) {
   const response = await fetch(url, { signal });
   const result = await response.json();
-  if (!response.ok) throw Object.assign(Error(result.error || `HTTP ${response.status}`), { status: response.status });
+  if (!response.ok) throw Object.assign(Error(result.error || `HTTP ${response.status}`), { status: response.status, code: result.code, recovery: result.recovery });
   return result;
 }
 export function revalidate(url, force = false) {
@@ -62,7 +62,7 @@ export async function api(url, body, signal) {
     const result = await response.json();
     if (!response.ok) {
       if (response.status < 500) writes.delete(fingerprint);
-      throw Object.assign(Error(result.error || `HTTP ${response.status}`), { status: response.status });
+      throw Object.assign(Error(result.error || `HTTP ${response.status}`), { status: response.status, code: result.code, recovery: result.recovery });
     }
     writes.delete(fingerprint);
     await refreshResources();

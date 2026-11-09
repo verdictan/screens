@@ -1,11 +1,17 @@
 export class Fault extends Error {
-  constructor(status, message) {
+  constructor(status, message, details = {}) {
     super(message);
     this.status = status;
+    if (details.code) this.code = details.code;
+    if (details.recovery) this.recovery = details.recovery;
   }
 }
-export function requireThat(condition, message, status = 400) {
-  if (!condition) throw new Fault(status, message);
+export function requireThat(condition, message, status = 400, details) {
+  if (!condition) throw new Fault(status, message, details);
+}
+export function revisionRecovery(type, id, read) {
+  return { code: "revision-conflict", recovery: { kind: "read-latest", record: { type, id: id ?? null },
+    ...(read ? { read } : {}), requires: ["read the latest record", "reconcile changes", "submit expectedRevision"] } };
 }
 export function text(value, label, max = 500) {
   requireThat(

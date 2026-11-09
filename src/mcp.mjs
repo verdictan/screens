@@ -322,7 +322,7 @@ export function protocol(store) {
           ...reply,
           result: {
             isError: true,
-            content: [{ type: "text", text: e.message }],
+            content: [{ type: "text", text: e.message }, ...(e.code ? [{ type: "text", text: JSON.stringify({ status: e.status || 500, code: e.code, recovery: e.recovery }) }] : [])],
           },
         };
       }

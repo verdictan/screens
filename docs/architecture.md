@@ -127,8 +127,19 @@ HTTP mutations accept an `Idempotency-Key` UUID v4; MCP uses `idempotencyKey`.
 The service stores input fingerprints and results atomically. Reusing a key for
 different input returns 409.
 
-The UI caches reads and refreshes on focus, reconnect, and writes. Feedback
-reopening has a seven-second Undo delay; failures restore server state. Approval
+The UI caches reads and refreshes on focus, reconnect, and writes. Project,
+session, set, screen and tab selection use one navigation reducer. Async
+navigation can finish on the server, but cannot replace a newer user selection.
+Review-set conflicts keep the draft. The user loads the latest saved version and
+explicitly chooses the saved version or keeps the draft against its revision
+before trying another save. Another intervening write still returns 409.
+
+Revision conflicts include `code: "revision-conflict"` and recovery metadata.
+HTTP returns these fields with the existing error message. MCP returns the human
+message and a JSON text block with the status, code and recovery instructions.
+The metadata grants no write or decision permissions.
+
+Feedback reopening has a seven-second Undo delay; failures restore server state. Approval
 and verification wait for the server. Collapsible forms stay mounted to preserve
 drafts, but closed content is hidden from view and keyboard navigation.
 
@@ -155,9 +166,9 @@ remaining work are in the [Roadmap](roadmap.md).
 ## Workflow ownership
 
 `src/workflows.mjs` defines shared job, feedback, fixture and browser observation
-rules, capture-plan phases, CI result states, and the stateful-area inventory. The registry, workers, review queue, UI and agent
-catalog use these definitions. UI reducers in `ui/lib/workflows.js` own capture
-preparation, recipe editing, resource loading, image loading, area selection and
+rules, capture-plan phases, CI result states, and the stateful-area inventory.
+The registry, workers, review queue, UI and agent catalog use these definitions. UI reducers in `ui/lib/workflows.js` own workspace
+navigation, review-set editing, capture preparation, recipe editing, resource loading, image loading, area selection and
 annotation gestures. Capture dialogs snapshot their review context on open;
 request ownership prevents late completions from changing a later dialog session.
 Fixture operations run in order. Fixture and service cleanup callers share one

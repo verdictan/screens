@@ -196,7 +196,7 @@ export function requestHandler(store, getPort) {
       }
       send(404, { error: "Not found" });
     } catch (e) {
-      send(e.status || 500, { error: e.status ? e.message : "Internal error" });
+      send(e.status || 500, { error: e.status ? e.message : "Internal error", ...(e.status && e.code ? { code: e.code, recovery: e.recovery } : {}) });
       if (!e.status) console.error(e);
     }
   };

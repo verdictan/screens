@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useLayoutEffect, useReducer, useRef, useState } from "react";
 import { Camera, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -21,7 +21,7 @@ export function CaptureWorkspace({ open, onOpenChange, project: activeProject, f
   const { plan, error, phase } = flow;
   const busy = ["preparing", "starting", "uploading"].includes(phase);
   const [configuration, setConfiguration] = useState(""), [file, setFile] = useState(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (open) {
       setScope({ project: activeProject, folder: activeFolder, role: activeRole, run: activeRun, entry: activeEntry });
       setDestination(activeProject?.id || ""); setPath(activeFolder || ""); setRole(activeRole || "current");
